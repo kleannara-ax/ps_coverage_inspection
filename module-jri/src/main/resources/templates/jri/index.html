@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>지분 검사 시스템 - Jumbo Roll Share Inspector</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css"
+      rel="stylesheet"
+    />
+    <link th:href="@{/jri-static/css/style.css}" href="/jri-static/css/style.css" rel="stylesheet" />
+    <!-- context-path 전달용 메타 태그 -->
+    <meta name="context-path" th:content="@{/}" content="/" />
+  </head>
+  <body class="bg-slate-100 text-slate-900">
+    <div class="flex min-h-screen flex-col">
+      <header class="border-b border-slate-200 bg-white">
+        <div class="mx-auto flex w-full max-w-6xl flex-col gap-2 px-4 py-6 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="text-sm font-semibold text-indigo-600">Jumbo Roll Quality Lab</p>
+            <h1 class="text-2xl font-bold text-slate-900">지분 검사 시스템</h1>
+            <p class="mt-1 text-sm text-slate-500">
+              점보롤 이미지를 업로드하고 임계값을 조정하여 지분(객체) 수를 실시간으로 확인하세요.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600">
+              <i class="fas fa-database text-[11px]"></i>
+              <span>DB 연동</span>
+            </span>
+            <span class="text-xs text-slate-400">v5.0.0</span>
+          </div>
+        </div>
+      </header>
+
+      <main class="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-8">
+        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <nav class="flex flex-wrap items-center gap-2 text-sm font-medium">
+            <button
+              type="button"
+              class="tab-trigger rounded-full border border-indigo-500 bg-indigo-500 px-4 py-2 text-white shadow-sm transition hover:bg-indigo-600"
+              data-tab-target="processing"
+              data-active="true"
+            >
+              검사 도구
+            </button>
+            <button
+              type="button"
+              class="tab-trigger rounded-full border border-slate-200 bg-white px-4 py-2 text-slate-600 transition hover:border-indigo-300 hover:text-indigo-600"
+              data-tab-target="history"
+            >
+              검사 이력
+            </button>
+            <button
+              type="button"
+              class="tab-trigger rounded-full border border-slate-200 bg-white px-4 py-2 text-slate-600 transition hover:border-indigo-300 hover:text-indigo-600"
+              data-tab-target="history-table"
+            >
+              이력 테이블
+            </button>
+          </nav>
+        </div>
+
+        <section id="tab-processing" class="tab-section space-y-6" data-tab-panel="processing">
+          <div class="grid gap-6 lg:grid-cols-[320px_1fr]">
+            <div class="space-y-6">
+              <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h2 class="text-lg font-semibold text-slate-900">이미지 준비</h2>
+                <p class="mt-1 text-sm text-slate-500">
+                  점보롤 샘플 이미지를 업로드하여 분석을 시작하세요.
+                </p>
+                <div class="mt-4 space-y-3">
+                  <span class="text-sm font-medium text-slate-700">이미지 선택</span>
+                  <div class="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      id="openCameraButton"
+                      type="button"
+                      class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-500 bg-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-600"
+                    >
+                      <i class="fas fa-camera"></i>
+                      이미지 업로드 (카메라)
+                    </button>
+                    <button
+                      id="openGalleryButton"
+                      type="button"
+                      class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-indigo-400 hover:text-indigo-600"
+                    >
+                      <i class="fas fa-image"></i>
+                      이미지 가져오기 (갤러리)
+                    </button>
+                  </div>
+                  <input id="cameraInput" type="file" accept="image/*" capture="environment" class="hidden" />
+                  <input id="galleryInput" type="file" accept="image/*" class="hidden" />
+                  <p class="text-xs text-slate-400">
+                    * 최대 900MB 이하의 이미지 파일을 지원하며, 조명 반사가 적은 이미지를 사용할수록 결과가 안정적입니다.
+                  </p>
+                </div>
+              </div>
+
+              <!-- 검사 메타데이터 카드 -->
+              <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h2 class="text-base font-bold text-slate-900">검사 메타데이터</h2>
+                <p class="mt-1 text-xs text-slate-500">MES/공정 연동 필수 값을 입력하세요. <span class="text-rose-500">*</span> 표시는 필수 항목입니다.</p>
+
+                <!-- MES 자동 수신 안내 박스 -->
+                <div class="mt-3 rounded-lg bg-indigo-50/70 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+                  <p>검사항목그룹코드, 자재코드(MATNR), 플랜트(WERKS), 점보롤 LOT 번호는 MES API 연동 시 자동으로 수신됩니다.</p>
+                  <p class="mt-0.5">수신된 값은 검사 결과 저장 시 DB에 기록됩니다.</p>
+                </div>
+
+                <!-- 바코드 입력 (필수) -->
+                <div class="mt-4">
+                  <label for="indBcdInput" class="text-xs font-semibold text-slate-800">점보롤 개별 바코드(ind_bcd) <span class="text-rose-500">*</span></label>
+                  <input id="indBcdInput" type="text" inputmode="text" placeholder="바코드 입력"
+                    class="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+                </div>
+
+                <!-- 검사자 ID (선택) -->
+                <div class="mt-3">
+                  <label for="operatorIdInput" class="text-xs font-semibold text-slate-800">검사자 ID (선택)</label>
+                  <input id="operatorIdInput" type="text" inputmode="text" placeholder="예: OP-001"
+                    class="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+                </div>
+
+                <!-- 자동 기록 안내 -->
+                <p class="mt-3 text-[11px] leading-relaxed text-slate-400">
+                  측정일시(MSRM_DATE)와 검사 수행 시각(inspected_at)은 이미지 업로드/분석 시 자동 기록됩니다.
+                </p>
+
+                <!-- 숨겨진 처리순번 (URL 파라미터 수신용) -->
+                <input id="prcSeqnoInput" type="hidden" />
+              </div>
+
+            </div>
+
+            <div class="space-y-6">
+              <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div class="border-b border-slate-200 px-5 py-4">
+                  <h2 class="text-lg font-semibold text-slate-900">이진화 결과 미리보기</h2>
+                  <p class="text-sm text-slate-500">원본과 이진화 결과를 나란히 비교하며 점검하세요.</p>
+                </div>
+                <div class="px-5 pb-6 pt-5">
+                  <div class="grid gap-4 md:grid-cols-2">
+                    <div class="space-y-3">
+                      <h3 class="text-sm font-semibold text-slate-800">원본 이미지</h3>
+                      <div id="originalWrapper" class="relative flex min-h-[240px] items-center justify-center overflow-hidden rounded-xl bg-slate-50">
+                        <canvas id="originalCanvas" class="hidden max-h-[70vh] w-full max-w-full rounded-xl"></canvas>
+                        <div id="originalPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-sm text-slate-500">
+                          <span class="rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-600">대기 중</span>
+                          <p>이미지를 업로드하면 원본이 표시됩니다.</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="space-y-3">
+                      <h3 class="text-sm font-semibold text-slate-800">지분 마킹 결과</h3>
+                      <div id="canvasWrapper" class="relative flex min-h-[240px] items-center justify-center overflow-hidden rounded-xl bg-slate-50">
+                        <canvas id="binaryCanvas" class="hidden max-h-[70vh] w-full max-w-full rounded-xl"></canvas>
+                        <canvas id="markerCanvas" class="pointer-events-none absolute hidden max-h-[70vh] w-full max-w-full"></canvas>
+                        <div id="processingOverlay" class="pointer-events-none absolute inset-0 hidden flex-col items-center justify-center gap-3 bg-white/85 text-center text-sm text-slate-600 backdrop-blur-sm">
+                          <span class="inline-flex h-9 w-9 items-center justify-center rounded-full border-2 border-indigo-200">
+                            <span class="h-4 w-4 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></span>
+                          </span>
+                          <div class="space-y-1">
+                            <p id="processingOverlayTitle" class="text-sm font-semibold text-slate-700">이미지 처리 중</p>
+                            <p id="processingOverlayMessage" class="text-xs text-slate-500">잠시만 기다려주세요…</p>
+                          </div>
+                        </div>
+                        <div id="canvasPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-sm text-slate-500">
+                          <span class="rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-600">결과 대기 중</span>
+                          <p>이미지를 업로드하면 이곳에 이진화된 마킹 결과가 표시됩니다.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 class="text-lg font-semibold text-slate-900">품질 검사 결과</h2>
+                    <p class="text-sm text-slate-500">자동 분석된 수치를 확인하며 검사 품질을 빠르게 파악하세요.</p>
+                  </div>
+                  <p class="text-xs text-slate-400">실시간 계산 · 수동 보정 즉시 반영</p>
+                </div>
+                <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                  <div class="rounded-2xl border border-indigo-100 bg-indigo-50/80 p-4 shadow-inner">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-indigo-700">총 지분</p>
+                    <p id="metricTotalCountValue" class="mt-2 text-2xl font-bold text-indigo-700">0</p>
+                    <p id="metricTotalCountSub" class="text-xs text-indigo-600/80">자동/수동/제외 현황</p>
+                  </div>
+                  <div class="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4 shadow-inner">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">밀도</p>
+                    <p id="metricDensityValue" class="mt-2 text-2xl font-bold text-emerald-700">0</p>
+                    <p id="metricDensitySub" class="text-xs text-emerald-600/80">만족 지분 개수</p>
+                  </div>
+                  <div class="rounded-2xl border border-amber-100 bg-amber-50/80 p-4 shadow-inner">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-amber-700">총 커버리지</p>
+                    <p id="metricCoverageValue" class="mt-2 text-2xl font-bold text-amber-700">0.00 ppm</p>
+                    <p id="metricCoverageSub" class="text-xs text-amber-600/80">총 면적 대비 지분 면적 (ppm)</p>
+                  </div>
+                  <div class="rounded-2xl border border-violet-100 bg-violet-50/80 p-4 shadow-inner">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-violet-700">크기 균일도</p>
+                    <p id="metricSizeUniformityValue" class="mt-2 text-2xl font-bold text-violet-700">0점</p>
+                    <p id="metricSizeUniformitySub" class="text-xs text-violet-600/80">평균·표준편차 기반</p>
+                  </div>
+                  <div class="rounded-2xl border border-sky-100 bg-sky-50/80 p-4 shadow-inner">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-sky-700">분포 균등도</p>
+                    <p id="metricDistributionUniformityValue" class="mt-2 text-2xl font-bold text-sky-700">0점</p>
+                    <p id="metricDistributionUniformitySub" class="text-xs text-sky-600/80">공간 분포 균형</p>
+                  </div>
+                </div>
+                <div class="mt-4 rounded-2xl border border-slate-100 bg-slate-50/80 p-4 text-[12px] leading-relaxed text-slate-500">
+                  <p class="font-semibold text-slate-600">지표 주석</p>
+                  <ul class="mt-2 space-y-1">
+                    <li><span class="font-semibold text-slate-700">총 지분</span>: 자동 검출된 지분에서 제외하지 않은 개수와 수동으로 추가한 지분을 합산한 값입니다.</li>
+                    <li><span class="font-semibold text-slate-700">밀도</span>: 지름이 약 3px 이상 7px 이하로 추정되는 지분의 개수입니다.</li>
+                    <li><span class="font-semibold text-slate-700">총 커버리지</span>: 전체 이미지 픽셀 대비 지분 픽셀 비율(ppm)입니다.</li>
+                    <li><span class="font-semibold text-slate-700">크기 균일도</span>: 지분 픽셀 면적의 평균과 표준편차로 계산한 0~100점 지표입니다.</li>
+                    <li><span class="font-semibold text-slate-700">분포 균등도</span>: 이미지를 4분면으로 나누었을 때의 지분 분포 균형도입니다.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div class="flex items-center gap-2">
+                    <h2 class="text-lg font-semibold text-slate-900">임계값 조절</h2>
+                    <span
+                      id="thresholdLockStatus"
+                      class="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-600"
+                    >
+                      <i id="thresholdLockStatusIcon" class="fas fa-lock text-[11px]"></i>
+                      <span id="thresholdLockStatusLabel">잠금</span>
+                    </span>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <span class="text-xs text-slate-400">최초 설정 후 유지 권장</span>
+                    <button
+                      id="thresholdLockButton"
+                      type="button"
+                      class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:ring-offset-1 border-indigo-500 bg-indigo-500 text-white hover:bg-indigo-600"
+                    >
+                      <i id="thresholdLockButtonIcon" class="fas fa-lock-open"></i>
+                      <span id="thresholdLockButtonLabel">잠금 해제</span>
+                    </button>
+                  </div>
+                </div>
+                <div class="mt-4 space-y-4">
+                  <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div class="flex items-center gap-3 sm:flex-1">
+                      <button
+                        id="thresholdDecreaseButton"
+                        type="button"
+                        class="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg font-semibold text-slate-600 transition hover:border-indigo-400 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled
+                      >
+                        −
+                      </button>
+                      <div class="flex-1">
+                        <label for="thresholdSlider" class="flex items-center justify-between text-xs font-medium text-slate-500">
+                          <span>현재 범위</span>
+                          <span class="text-indigo-600"><strong id="thresholdValue" class="font-bold">0 ~ 115</strong></span>
+                        </label>
+                        <input
+                          id="thresholdSlider"
+                          type="range"
+                          min="0"
+                          max="255"
+                          value="115"
+                          disabled
+                          class="mt-2 w-full cursor-pointer accent-indigo-500"
+                        />
+                      </div>
+                      <button
+                        id="thresholdIncreaseButton"
+                        type="button"
+                        class="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg font-semibold text-slate-600 transition hover:border-indigo-400 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled
+                      >
+                        +
+                      </button>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500 sm:w-52">
+                      <p class="font-semibold text-slate-600">TIP</p>
+                      <p class="mt-1 leading-relaxed">기본값 115를 사용하고 필요할 때 ±1씩 미세 조정하세요.</p>
+                    </div>
+                  </div>
+                  <div class="space-y-1 text-xs text-slate-500">
+                    <p>최소 임계값(0)은 고정이며, 슬라이더로 최대 임계값을 조절합니다.</p>
+                    <p>값이 낮을수록 어두운 픽셀만 객체로 남고, 높을수록 더 밝은 영역까지 포함됩니다.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex items-center justify-between">
+                  <h2 class="text-lg font-semibold text-slate-900">크기별 지분 카운팅</h2>
+                  <span class="text-[11px] text-slate-400">픽셀 면적 기준 집계</span>
+                </div>
+                <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-semibold text-slate-500">&#8804; 3px</p>
+                    <p id="bucketUpTo3Value" class="mt-2 text-xl font-bold text-slate-700">0</p>
+                    <p class="text-[11px] text-slate-400">(&#8804; 9 px²)</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-semibold text-slate-500">&#8804; 5px</p>
+                    <p id="bucketUpTo5Value" class="mt-2 text-xl font-bold text-slate-700">0</p>
+                    <p class="text-[11px] text-slate-400">(&#8804; 25 px²)</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-semibold text-slate-500">&#8804; 7px</p>
+                    <p id="bucketUpTo7Value" class="mt-2 text-xl font-bold text-slate-700">0</p>
+                    <p class="text-[11px] text-slate-400">(&#8804; 49 px²)</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-semibold text-slate-500">&gt; 7px</p>
+                    <p id="bucketOver7Value" class="mt-2 text-xl font-bold text-slate-700">0</p>
+                    <p class="text-[11px] text-slate-400">(&gt; 49 px²)</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex items-center justify-between">
+                  <h2 class="text-lg font-semibold text-slate-900">공간 분포 (4등분 영역별 지분 개수)</h2>
+                  <span class="text-[11px] text-slate-400">좌/우 · 상/하 분면</span>
+                </div>
+                <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-semibold text-slate-500">좌상단</p>
+                    <p id="quadrantTopLeftValue" class="mt-2 text-xl font-bold text-slate-700">0</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-semibold text-slate-500">우상단</p>
+                    <p id="quadrantTopRightValue" class="mt-2 text-xl font-bold text-slate-700">0</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-semibold text-slate-500">좌하단</p>
+                    <p id="quadrantBottomLeftValue" class="mt-2 text-xl font-bold text-slate-700">0</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-semibold text-slate-500">우하단</p>
+                    <p id="quadrantBottomRightValue" class="mt-2 text-xl font-bold text-slate-700">0</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex items-center justify-between">
+                  <h2 class="text-lg font-semibold text-slate-900">인식된 지분 위치</h2>
+                  <span class="text-xs text-slate-400">좌표 단위: 픽셀</span>
+                </div>
+                <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <button
+                      id="toggleManualAddButton"
+                      type="button"
+                      class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-emerald-300 hover:text-emerald-600"
+                    >
+                      수동 지분 추가
+                    </button>
+                    <button
+                      id="resetManualButton"
+                      type="button"
+                      disabled
+                      class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-500 transition disabled:cursor-not-allowed disabled:opacity-60 hover:border-rose-300 hover:text-rose-600"
+                    >
+                      수동 추가 초기화
+                    </button>
+                  </div>
+                  <p id="manualModeStatus" class="text-xs text-slate-400">이미지를 업로드하면 수동 추가 기능을 사용할 수 있습니다.</p>
+                </div>
+                <div id="positionsList" class="mt-3 max-h-64 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
+                  <p class="text-slate-400">아직 인식된 객체가 없습니다.</p>
+                </div>
+              </div>
+
+              <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h2 class="text-lg font-semibold text-slate-900">검출 요약</h2>
+                <p id="objectCount" class="mt-2 text-2xl font-bold text-indigo-600">인식된 객체: 0개 · 면적 비율: 0.00 ppm</p>
+                <div class="mt-3 space-y-2">
+                  <p id="imageInfo" class="text-sm text-slate-500">
+                    이미지를 불러오면 해상도, 픽셀 수 등 정보가 표시됩니다.
+                  </p>
+                </div>
+                <button
+                  id="saveResultButton"
+                  type="button"
+                  disabled
+                  class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-500 bg-indigo-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-600 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path d="M3 4a2 2 0 012-2h6a1 1 0 01.7.3l4 4a1 1 0 01.3.7v7a2 2 0 01-2 2H5a2 2 0 01-2-2V4z" />
+                    <path d="M7 4h4v3a1 1 0 01-1 1H8a1 1 0 01-1-1V4z" class="fill-white opacity-70" />
+                  </svg>
+                  검사 결과 저장 (DB)
+                </button>
+                <p id="saveMessage" class="mt-2 text-xs text-slate-400">
+                  분석 후 저장 버튼을 눌러 DB에 이력을 남길 수 있습니다.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="tab-history" class="tab-section hidden space-y-6" data-tab-panel="history">
+          <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 class="text-lg font-semibold text-slate-900">검사 이력</h2>
+                <p class="text-sm text-slate-500">서버 DB에 저장된 검사 기록을 확인하고 관리하세요.</p>
+              </div>
+              <div class="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+                <div class="flex items-center gap-2">
+                  <input id="historySearchInput" type="text" placeholder="바코드 또는 LOT 번호 검색"
+                    class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+                  <button id="historySearchButton" type="button"
+                    class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:border-indigo-300 hover:text-indigo-600">
+                    <i class="fas fa-search text-indigo-500"></i> 검색
+                  </button>
+                </div>
+                <button
+                  id="clearHistoryButton"
+                  type="button"
+                  class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:border-rose-300 hover:text-rose-600"
+                >
+                  <i class="fas fa-trash text-rose-500"></i>
+                  전체 삭제
+                </button>
+              </div>
+            </div>
+            <div class="mt-3 rounded-xl bg-indigo-50 px-4 py-3 text-xs text-indigo-700">
+              <p>모든 이력 데이터는 서버 DB(MariaDB)에 저장됩니다.</p>
+            </div>
+            <div id="historyList" class="mt-5 space-y-4 text-sm text-slate-600">
+              <p class="text-slate-400">저장된 검사 이력이 없습니다.</p>
+            </div>
+            <!-- 페이징 -->
+            <div id="historyPagination" class="mt-4 flex items-center justify-center gap-2"></div>
+          </div>
+        </section>
+
+        <section id="tab-history-table" class="tab-section hidden space-y-6" data-tab-panel="history-table">
+          <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 class="text-lg font-semibold text-slate-900">검사 이력 테이블</h2>
+                <p class="text-sm text-slate-500">저장된 결과를 표 형태로 정렬해 확인하고 관리하세요.</p>
+              </div>
+              <div class="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+                <button
+                  type="button"
+                  id="exportHistoryButton"
+                  class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:border-indigo-300 hover:text-indigo-600"
+                  disabled
+                >
+                  <i class="fas fa-file-export text-indigo-500"></i>
+                  내보내기 (준비 중)
+                </button>
+              </div>
+            </div>
+            <div class="mt-3 rounded-xl bg-indigo-50 px-4 py-3 text-xs text-indigo-700">
+              <p>모든 이력 데이터는 서버 DB(MariaDB)에 저장됩니다.</p>
+            </div>
+            <div class="mt-5 overflow-x-auto">
+              <table class="min-w-full divide-y divide-slate-200 text-sm">
+                <thead class="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th scope="col" class="px-4 py-3 text-left">SEQ</th>
+                    <th scope="col" class="px-4 py-3 text-left">바코드</th>
+                    <th scope="col" class="px-4 py-3 text-left">LOT</th>
+                    <th scope="col" class="px-4 py-3 text-left">검사 시각</th>
+                    <th scope="col" class="px-4 py-3 text-left">임계값</th>
+                    <th scope="col" class="px-4 py-3 text-left">지분 요약</th>
+                    <th scope="col" class="px-4 py-3 text-left">밀도</th>
+                    <th scope="col" class="px-4 py-3 text-left">커버리지</th>
+                    <th scope="col" class="px-4 py-3 text-left">크기 균일도</th>
+                    <th scope="col" class="px-4 py-3 text-left">분포 균등도</th>
+                    <th scope="col" class="px-4 py-3 text-center">&#8804;3px</th>
+                    <th scope="col" class="px-4 py-3 text-center">&#8804;5px</th>
+                    <th scope="col" class="px-4 py-3 text-center">&#8804;7px</th>
+                    <th scope="col" class="px-4 py-3 text-center">&gt;7px</th>
+                    <th scope="col" class="px-4 py-3 text-left">공간 분포</th>
+                    <th scope="col" class="px-4 py-3 text-left">검사자</th>
+                    <th scope="col" class="px-4 py-3 text-left">관리</th>
+                  </tr>
+                </thead>
+                <tbody id="historyTableBody" class="divide-y divide-slate-100 text-slate-600"></tbody>
+              </table>
+              <p id="historyTableEmpty" class="mt-4 text-sm text-slate-400">저장된 검사 이력이 없습니다.</p>
+            </div>
+            <!-- 페이징 -->
+            <div id="historyTablePagination" class="mt-4 flex items-center justify-center gap-2"></div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="border-t border-slate-200 bg-white">
+        <div class="mx-auto flex w-full max-w-6xl flex-col gap-2 px-4 py-4 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+          <p>&copy; 2025 Jumbo Roll Quality Lab. 모든 권리 보유.</p>
+          <p>Spring Boot + MariaDB · 이미지 분석은 클라이언트 로컬에서 수행됩니다.</p>
+        </div>
+      </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+    <script th:src="@{/jri-static/js/app.js}" src="/jri-static/js/app.js"></script>
+  </body>
+</html>

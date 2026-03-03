@@ -1,0 +1,59 @@
+package com.company.module.jri.repository;
+
+import com.company.module.jri.domain.JriInspection;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * 점보롤 지분 검사 결과 Repository
+ *
+ * <p>Table: MOD_JRI_INSPECTION
+ */
+@Repository
+public interface JriInspectionRepository extends JpaRepository<JriInspection, String> {
+
+    /** 바코드로 조회 (최신순) */
+    List<JriInspection> findByIndBcdOrderByInspectedAtDesc(String indBcd);
+
+    /** LOT 번호로 조회 (최신순) */
+    List<JriInspection> findByLotnrOrderByInspectedAtDesc(String lotnr);
+
+    /** 최신순 페이징 (inspectedAt 기준) */
+    Page<JriInspection> findAllByOrderByInspectedAtDesc(Pageable pageable);
+
+    /** 바코드 LIKE 검색 */
+    @Query("SELECT i FROM JriInspection i WHERE i.indBcd LIKE %:keyword% ORDER BY i.inspectedAt DESC")
+    Page<JriInspection> searchByIndBcd(@Param("keyword") String keyword, Pageable pageable);
+
+    /** LOT 번호 LIKE 검색 */
+    @Query("SELECT i FROM JriInspection i WHERE i.lotnr LIKE %:keyword% ORDER BY i.inspectedAt DESC")
+    Page<JriInspection> searchByLotnr(@Param("keyword") String keyword, Pageable pageable);
+
+    /** 자재코드 LIKE 검색 */
+    @Query("SELECT i FROM JriInspection i WHERE i.matnr LIKE %:keyword% ORDER BY i.inspectedAt DESC")
+    Page<JriInspection> searchByMatnr(@Param("keyword") String keyword, Pageable pageable);
+
+    /** 기간 조회 */
+    @Query("SELECT i FROM JriInspection i WHERE i.inspectedAt BETWEEN :from AND :to ORDER BY i.inspectedAt DESC")
+    Page<JriInspection> findByDateRange(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            Pageable pageable
+    );
+
+    /** 같은 바코드의 최대 seq 조회 (바코드 차수 자동증가용) */
+    @Query("SELECT MAX(i.seq) FROM JriInspection i WHERE i.indBcd = :indBcd")
+    Optional<Integer> findMaxSeqByIndBcd(@Param("indBcd") String indBcd);
+
+    /** 같은 바코드의 검사 차수 카운트 (ind_bcd_seq 자동증가용) */
+    @Query("SELECT COUNT(i) FROM JriInspection i WHERE i.indBcd = :indBcd")
+    long countByIndBcd(@Param("indBcd") String indBcd);
+}
