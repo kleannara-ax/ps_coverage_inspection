@@ -1,0 +1,31 @@
+:root {
+  color-scheme: light;
+}
+
+body {
+  font-family: 'Pretendard Variable', 'Noto Sans KR', 'Spoqa Han Sans Neo', -apple-system,
+    BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background-color: #f8fafc;
+}
+
+#canvasWrapper {
+  position: relative;
+}
+
+#canvasWrapper canvas {
+  image-rendering: pixelated;
+  display: block;
+}
+
+#markerCanvas {
+  pointer-events: none;
+}
+
+.tab-trigger {
+  transition: all 0.25s ease;
+}
+
+.tab-section {
+  transition: opacity 0.2s ease;
+}

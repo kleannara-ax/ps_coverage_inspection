@@ -6,11 +6,17 @@ import com.company.module.jri.dto.JriInspectionSaveRequest;
 import com.company.module.jri.repository.JriInspectionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -28,11 +34,20 @@ public class JriInspectionService {
 
     private final JriInspectionRepository inspectionRepository;
 
+    @Value("${jri.upload.dir:./uploads/jri}")
+    private String uploadDir;
+
     /**
-     * 검사 결과 저장
+     * 검사 결과 저장 (Multipart 이미지 포함)
+     *
+     * @param request       검사 메타 정보
+     * @param originalImage 원본 이미지 (nullable)
+     * @param resultImage   결과 이미지 (nullable)
      */
     @Transactional
-    public JriInspectionResponse saveInspection(JriInspectionSaveRequest request) {
+    public JriInspectionResponse saveInspection(JriInspectionSaveRequest request,
+                                                 MultipartFile originalImage,
+                                                 MultipartFile resultImage) {
         log.info("[JRI] 검사 결과 저장 요청 - indBcd: {}, lotnr: {}, totalCount: {}",
                 request.getIndBcd(), request.getLotnr(), request.getTotalCount());
 
@@ -54,6 +69,14 @@ public class JriInspectionService {
 
         // msrmDate 자동 기록 (이미지 업로드 시각)
         LocalDateTime msrmDate = request.getMsrmDate() != null ? request.getMsrmDate() : LocalDateTime.now();
+
+        // 이미지 저장
+        String originalImagePath = saveUploadedImage(originalImage, "original", id);
+        String resultImagePath = saveUploadedImage(resultImage, "result", id);
+
+        // 기존 JSON 방식의 경로가 이미 있으면 유지
+        if (originalImagePath == null) originalImagePath = request.getOriginalImagePath();
+        if (resultImagePath == null) resultImagePath = request.getResultImagePath();
 
         JriInspection inspection = JriInspection.builder()
                 .id(id)
@@ -91,8 +114,8 @@ public class JriInspectionService {
                 .totalPixels(request.getTotalPixels())
                 .manualAddedCount(request.getManualAddedCount() != null ? request.getManualAddedCount() : 0)
                 .manualRemovedCount(request.getManualRemovedCount() != null ? request.getManualRemovedCount() : 0)
-                .originalImagePath(request.getOriginalImagePath())
-                .resultImagePath(request.getResultImagePath())
+                .originalImagePath(originalImagePath)
+                .resultImagePath(resultImagePath)
                 .operatorId(request.getOperatorId())
                 .deviceId(request.getDeviceId())
                 .status(request.getStatus())
@@ -100,8 +123,35 @@ public class JriInspectionService {
 
         inspection = inspectionRepository.save(inspection);
 
-        log.info("[JRI] 검사 결과 저장 완료 - id: {}, seq: {}", inspection.getId(), inspection.getSeq());
+        log.info("[JRI] 검사 결과 저장 완료 - id: {}, seq: {}, originalImage: {}, resultImage: {}",
+                inspection.getId(), inspection.getSeq(), originalImagePath, resultImagePath);
         return toResponse(inspection);
+    }
+
+    /**
+     * MultipartFile → 디스크 저장
+     * @return 저장된 파일의 상대 경로 (null if no file)
+     */
+    private String saveUploadedImage(MultipartFile file, String prefix, String inspectionId) {
+        if (file == null || file.isEmpty()) return null;
+        try {
+            Path dir = Paths.get(uploadDir);
+            if (!Files.exists(dir)) Files.createDirectories(dir);
+
+            String originalName = file.getOriginalFilename();
+            String ext = "jpg";
+            if (originalName != null && originalName.contains(".")) {
+                ext = originalName.substring(originalName.lastIndexOf('.') + 1);
+            }
+            String filename = String.format("%s_%s_%s.%s", prefix, inspectionId.substring(0, 8),
+                    System.currentTimeMillis(), ext);
+            Path filePath = dir.resolve(filename);
+            file.transferTo(filePath.toFile());
+            return "/uploads/jri/" + filename;
+        } catch (IOException e) {
+            log.error("[JRI] 이미지 저장 실패 - prefix: {}", prefix, e);
+            return null;
+        }
     }
 
     /**
