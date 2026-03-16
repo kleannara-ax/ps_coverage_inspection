@@ -3,6 +3,7 @@ package com.company.module.jri.controller;
 import com.company.module.jri.dto.JriInspectionResponse;
 import com.company.module.jri.dto.JriInspectionSaveRequest;
 import com.company.module.jri.service.JriInspectionService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,8 +11,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Map;
 
@@ -30,16 +33,43 @@ import java.util.Map;
 public class JriInspectionApiController {
 
     private final JriInspectionService inspectionService;
+    private final ObjectMapper objectMapper;
 
     /**
-     * 검사 결과 저장
-     * POST /jri-api/inspections
+     * 검사 결과 저장 (JSON)
+     * POST /jri-api/inspections (Content-Type: application/json)
      */
-    @PostMapping
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<JriInspectionResponse> saveInspection(
             @Valid @RequestBody JriInspectionSaveRequest request) {
-        JriInspectionResponse response = inspectionService.saveInspection(request);
+        JriInspectionResponse response = inspectionService.saveInspection(request, null, null);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /**
+     * 검사 결과 저장 (Multipart: 이미지 바이너리 직접 업로드)
+     * POST /jri-api/inspections (Content-Type: multipart/form-data)
+     *
+     * <p>클라이언트에서 Canvas를 JPEG Blob으로 변환 후 FormData로 전송.
+     * Base64-in-JSON 대비 ~30% 작은 페이로드, ~5-10배 빠른 인코딩.</p>
+     *
+     * @param metadata       검사 메타 정보 JSON 문자열
+     * @param originalImage  검사 전 원본 이미지 (JPEG)
+     * @param resultImage    검사 후 마킹 이미지 (JPEG)
+     */
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<JriInspectionResponse> saveInspectionMultipart(
+            @RequestPart("metadata") String metadata,
+            @RequestPart(value = "originalImage", required = false) MultipartFile originalImage,
+            @RequestPart(value = "resultImage", required = false) MultipartFile resultImage) {
+        try {
+            JriInspectionSaveRequest request = objectMapper.readValue(metadata, JriInspectionSaveRequest.class);
+            JriInspectionResponse response = inspectionService.saveInspection(request, originalImage, resultImage);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (Exception e) {
+            log.error("Multipart 검사 결과 저장 실패", e);
+            throw new RuntimeException("검사 결과 저장 중 오류가 발생했습니다: " + e.getMessage());
+        }
     }
 
     /**
