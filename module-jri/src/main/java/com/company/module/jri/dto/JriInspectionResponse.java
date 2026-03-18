@@ -19,6 +19,7 @@ public class JriInspectionResponse {
     private Integer seq;
     private String inspItemGrpCd;
     private String matnr;
+    private String matnrNm;
     private String werks;
     private LocalDateTime msrmDate;
     private Integer prcSeqno;
@@ -56,8 +57,16 @@ public class JriInspectionResponse {
     private Integer manualAddedCount;
     private Integer manualRemovedCount;
     private String originalImagePath;
+    private String originalImageName;
+    private String originalImageDir;
     private String resultImagePath;
+    private String resultImageName;
+    private String resultImageDir;
     private String operatorId;
+    private String operatorNm;
     private String deviceId;
     private String status;
+
+    /** INSERT / UPDATE 구분 (true = 기존 레코드 갱신) */
+    private Boolean isUpdate;
 }

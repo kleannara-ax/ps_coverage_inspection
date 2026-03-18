@@ -17,7 +17,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.UUID;
 
 /**
@@ -38,7 +40,7 @@ public class JriInspectionService {
     private String uploadDir;
 
     /**
-     * 검사 결과 저장 (Multipart 이미지 포함)
+     * 검사 결과 저장 (Upsert: 동일 자재+LOT+바코드 존재 시 UPDATE, 없으면 INSERT)
      *
      * @param request       검사 메타 정보
      * @param originalImage 원본 이미지 (nullable)
@@ -48,91 +50,170 @@ public class JriInspectionService {
     public JriInspectionResponse saveInspection(JriInspectionSaveRequest request,
                                                  MultipartFile originalImage,
                                                  MultipartFile resultImage) {
-        log.info("[JRI] 검사 결과 저장 요청 - indBcd: {}, lotnr: {}, totalCount: {}",
-                request.getIndBcd(), request.getLotnr(), request.getTotalCount());
+        log.info("[JRI] 검사 결과 저장 요청 - indBcd: {}, lotnr: {}, matnr: {}, totalCount: {}",
+                request.getIndBcd(), request.getLotnr(), request.getMatnr(), request.getTotalCount());
 
-        // UUID 생성
-        String id = UUID.randomUUID().toString();
+        // 이미지 저장 준비
+        String indBcdSafe = request.getIndBcd() != null
+                ? request.getIndBcd().replaceAll("[^a-zA-Z0-9_-]", "_") : "unknown";
 
-        // seq 자동 할당: 같은 바코드의 최대 seq + 1
-        int seq = 1;
-        if (request.getIndBcd() != null && !request.getIndBcd().isBlank()) {
-            seq = inspectionRepository.findMaxSeqByIndBcd(request.getIndBcd()).orElse(0) + 1;
+        // ── 동일 자재 + LOT + 개별바코드 조합으로 기존 레코드 조회 ──
+        boolean isUpdate = false;
+        JriInspection inspection = null;
+
+        if (request.getMatnr() != null && !request.getMatnr().isBlank()
+                && request.getLotnr() != null && !request.getLotnr().isBlank()
+                && request.getIndBcd() != null && !request.getIndBcd().isBlank()) {
+            inspection = inspectionRepository.findByMatnrAndLotnrAndIndBcd(
+                    request.getMatnr(), request.getLotnr(), request.getIndBcd()
+            ).orElse(null);
         }
 
-        // ind_bcd_seq 자동증가: 같은 바코드의 기존 건수 + 1
-        String indBcdSeq = request.getIndBcdSeq();
-        if ((indBcdSeq == null || indBcdSeq.isBlank()) && request.getIndBcd() != null && !request.getIndBcd().isBlank()) {
-            long count = inspectionRepository.countByIndBcd(request.getIndBcd());
-            indBcdSeq = String.valueOf(count + 1);
+        if (inspection != null) {
+            // ── UPDATE: 기존 레코드 갱신 ──
+            isUpdate = true;
+            log.info("[JRI] 동일 조합 기존 레코드 발견 → UPDATE (id: {}, seq: {})", inspection.getId(), inspection.getSeq());
+
+            // 이미지 저장 (기존 ID 사용)
+            String originalImagePath = saveUploadedImage(originalImage, "original", inspection.getId(), indBcdSafe);
+            String resultImagePath = saveUploadedImage(resultImage, "result", inspection.getId(), indBcdSafe);
+            String originalImageName = originalImagePath != null ? originalImagePath.substring(originalImagePath.lastIndexOf('/') + 1) : null;
+            String resultImageName = resultImagePath != null ? resultImagePath.substring(resultImagePath.lastIndexOf('/') + 1) : null;
+            String imageDir = originalImagePath != null || resultImagePath != null ? uploadDir : null;
+            if (originalImagePath == null) originalImagePath = request.getOriginalImagePath();
+            if (resultImagePath == null) resultImagePath = request.getResultImagePath();
+
+            // 검사 데이터 갱신
+            inspection.setInspectedAt(request.getInspectedAt() != null ? request.getInspectedAt() : LocalDateTime.now());
+            inspection.setMsrmDate(request.getMsrmDate() != null ? request.getMsrmDate() : LocalDateTime.now());
+            inspection.setThresholdMax(request.getThresholdMax());
+            inspection.setTotalCount(request.getTotalCount() != null ? request.getTotalCount() : 0);
+            inspection.setCoverageRatio(request.getCoverageRatio());
+            inspection.setDensityCount(request.getDensityCount());
+            inspection.setDensityRatio(request.getDensityRatio());
+            inspection.setSizeUniformityScore(request.getSizeUniformityScore());
+            inspection.setDistributionUniformityScore(request.getDistributionUniformityScore());
+            inspection.setMeanSize(request.getMeanSize());
+            inspection.setStdSize(request.getStdSize());
+            inspection.setAutoCount(request.getAutoCount() != null ? request.getAutoCount() : 0);
+            inspection.setManualCount(request.getManualCount() != null ? request.getManualCount() : 0);
+            inspection.setRemovedAutoCount(request.getRemovedAutoCount() != null ? request.getRemovedAutoCount() : 0);
+            inspection.setBucketUpTo3(request.getBucketUpTo3());
+            inspection.setBucketUpTo5(request.getBucketUpTo5());
+            inspection.setBucketUpTo7(request.getBucketUpTo7());
+            inspection.setBucketOver7(request.getBucketOver7());
+            inspection.setQuadrantTopLeft(request.getQuadrantTopLeft());
+            inspection.setQuadrantTopRight(request.getQuadrantTopRight());
+            inspection.setQuadrantBottomLeft(request.getQuadrantBottomLeft());
+            inspection.setQuadrantBottomRight(request.getQuadrantBottomRight());
+            inspection.setObjectPixelCount(request.getObjectPixelCount());
+            inspection.setTotalPixels(request.getTotalPixels());
+            inspection.setManualAddedCount(request.getManualAddedCount() != null ? request.getManualAddedCount() : 0);
+            inspection.setManualRemovedCount(request.getManualRemovedCount() != null ? request.getManualRemovedCount() : 0);
+            inspection.setOriginalImagePath(originalImagePath);
+            inspection.setOriginalImageName(originalImageName != null ? originalImageName : inspection.getOriginalImageName());
+            inspection.setOriginalImageDir(imageDir != null ? imageDir : inspection.getOriginalImageDir());
+            inspection.setResultImagePath(resultImagePath);
+            inspection.setResultImageName(resultImageName != null ? resultImageName : inspection.getResultImageName());
+            inspection.setResultImageDir(imageDir != null ? imageDir : inspection.getResultImageDir());
+            inspection.setOperatorId(request.getOperatorId());
+            inspection.setDeviceId(request.getDeviceId());
+            inspection.setStatus(request.getStatus());
+            if (request.getMatnrNm() != null) inspection.setMatnrNm(request.getMatnrNm());
+            if (request.getOperatorNm() != null) inspection.setOperatorNm(request.getOperatorNm());
+
+        } else {
+            // ── INSERT: 신규 레코드 생성 ──
+            String id = UUID.randomUUID().toString();
+
+            int seq = 1;
+            if (request.getIndBcd() != null && !request.getIndBcd().isBlank()) {
+                seq = inspectionRepository.findMaxSeqByIndBcd(request.getIndBcd()).orElse(0) + 1;
+            }
+
+            String indBcdSeq = request.getIndBcdSeq();
+            if ((indBcdSeq == null || indBcdSeq.isBlank()) && request.getIndBcd() != null && !request.getIndBcd().isBlank()) {
+                long count = inspectionRepository.countByIndBcd(request.getIndBcd());
+                indBcdSeq = String.valueOf(count + 1);
+            }
+
+            LocalDateTime msrmDate = request.getMsrmDate() != null ? request.getMsrmDate() : LocalDateTime.now();
+
+            String originalImagePath = saveUploadedImage(originalImage, "original", id, indBcdSafe);
+            String resultImagePath = saveUploadedImage(resultImage, "result", id, indBcdSafe);
+            String originalImageName = originalImagePath != null ? originalImagePath.substring(originalImagePath.lastIndexOf('/') + 1) : null;
+            String resultImageName = resultImagePath != null ? resultImagePath.substring(resultImagePath.lastIndexOf('/') + 1) : null;
+            String imageDir = originalImagePath != null || resultImagePath != null ? uploadDir : null;
+            if (originalImagePath == null) originalImagePath = request.getOriginalImagePath();
+            if (resultImagePath == null) resultImagePath = request.getResultImagePath();
+
+            inspection = JriInspection.builder()
+                    .id(id)
+                    .seq(seq)
+                    .inspItemGrpCd(request.getInspItemGrpCd())
+                    .matnr(request.getMatnr())
+                    .matnrNm(request.getMatnrNm())
+                    .werks(request.getWerks())
+                    .msrmDate(msrmDate)
+                    .prcSeqno(request.getPrcSeqno())
+                    .lotnr(request.getLotnr())
+                    .indBcd(request.getIndBcd())
+                    .indBcdSeq(indBcdSeq)
+                    .inspectedAt(request.getInspectedAt())
+                    .thresholdMax(request.getThresholdMax())
+                    .totalCount(request.getTotalCount() != null ? request.getTotalCount() : 0)
+                    .coverageRatio(request.getCoverageRatio())
+                    .densityCount(request.getDensityCount())
+                    .densityRatio(request.getDensityRatio())
+                    .sizeUniformityScore(request.getSizeUniformityScore())
+                    .distributionUniformityScore(request.getDistributionUniformityScore())
+                    .meanSize(request.getMeanSize())
+                    .stdSize(request.getStdSize())
+                    .autoCount(request.getAutoCount() != null ? request.getAutoCount() : 0)
+                    .manualCount(request.getManualCount() != null ? request.getManualCount() : 0)
+                    .removedAutoCount(request.getRemovedAutoCount() != null ? request.getRemovedAutoCount() : 0)
+                    .bucketUpTo3(request.getBucketUpTo3())
+                    .bucketUpTo5(request.getBucketUpTo5())
+                    .bucketUpTo7(request.getBucketUpTo7())
+                    .bucketOver7(request.getBucketOver7())
+                    .quadrantTopLeft(request.getQuadrantTopLeft())
+                    .quadrantTopRight(request.getQuadrantTopRight())
+                    .quadrantBottomLeft(request.getQuadrantBottomLeft())
+                    .quadrantBottomRight(request.getQuadrantBottomRight())
+                    .objectPixelCount(request.getObjectPixelCount())
+                    .totalPixels(request.getTotalPixels())
+                    .manualAddedCount(request.getManualAddedCount() != null ? request.getManualAddedCount() : 0)
+                    .manualRemovedCount(request.getManualRemovedCount() != null ? request.getManualRemovedCount() : 0)
+                    .originalImagePath(originalImagePath)
+                    .originalImageName(originalImageName)
+                    .originalImageDir(imageDir)
+                    .resultImagePath(resultImagePath)
+                    .resultImageName(resultImageName)
+                    .resultImageDir(imageDir)
+                    .operatorId(request.getOperatorId())
+                    .operatorNm(request.getOperatorNm())
+                    .deviceId(request.getDeviceId())
+                    .status(request.getStatus())
+                    .build();
         }
-
-        // msrmDate 자동 기록 (이미지 업로드 시각)
-        LocalDateTime msrmDate = request.getMsrmDate() != null ? request.getMsrmDate() : LocalDateTime.now();
-
-        // 이미지 저장
-        String originalImagePath = saveUploadedImage(originalImage, "original", id);
-        String resultImagePath = saveUploadedImage(resultImage, "result", id);
-
-        // 기존 JSON 방식의 경로가 이미 있으면 유지
-        if (originalImagePath == null) originalImagePath = request.getOriginalImagePath();
-        if (resultImagePath == null) resultImagePath = request.getResultImagePath();
-
-        JriInspection inspection = JriInspection.builder()
-                .id(id)
-                .seq(seq)
-                .inspItemGrpCd(request.getInspItemGrpCd())
-                .matnr(request.getMatnr())
-                .werks(request.getWerks())
-                .msrmDate(msrmDate)
-                .prcSeqno(request.getPrcSeqno())
-                .lotnr(request.getLotnr())
-                .indBcd(request.getIndBcd())
-                .indBcdSeq(indBcdSeq)
-                .inspectedAt(request.getInspectedAt())
-                .thresholdMax(request.getThresholdMax())
-                .totalCount(request.getTotalCount() != null ? request.getTotalCount() : 0)
-                .coverageRatio(request.getCoverageRatio())
-                .densityCount(request.getDensityCount())
-                .densityRatio(request.getDensityRatio())
-                .sizeUniformityScore(request.getSizeUniformityScore())
-                .distributionUniformityScore(request.getDistributionUniformityScore())
-                .meanSize(request.getMeanSize())
-                .stdSize(request.getStdSize())
-                .autoCount(request.getAutoCount() != null ? request.getAutoCount() : 0)
-                .manualCount(request.getManualCount() != null ? request.getManualCount() : 0)
-                .removedAutoCount(request.getRemovedAutoCount() != null ? request.getRemovedAutoCount() : 0)
-                .bucketUpTo3(request.getBucketUpTo3())
-                .bucketUpTo5(request.getBucketUpTo5())
-                .bucketUpTo7(request.getBucketUpTo7())
-                .bucketOver7(request.getBucketOver7())
-                .quadrantTopLeft(request.getQuadrantTopLeft())
-                .quadrantTopRight(request.getQuadrantTopRight())
-                .quadrantBottomLeft(request.getQuadrantBottomLeft())
-                .quadrantBottomRight(request.getQuadrantBottomRight())
-                .objectPixelCount(request.getObjectPixelCount())
-                .totalPixels(request.getTotalPixels())
-                .manualAddedCount(request.getManualAddedCount() != null ? request.getManualAddedCount() : 0)
-                .manualRemovedCount(request.getManualRemovedCount() != null ? request.getManualRemovedCount() : 0)
-                .originalImagePath(originalImagePath)
-                .resultImagePath(resultImagePath)
-                .operatorId(request.getOperatorId())
-                .deviceId(request.getDeviceId())
-                .status(request.getStatus())
-                .build();
 
         inspection = inspectionRepository.save(inspection);
 
-        log.info("[JRI] 검사 결과 저장 완료 - id: {}, seq: {}, originalImage: {}, resultImage: {}",
-                inspection.getId(), inspection.getSeq(), originalImagePath, resultImagePath);
-        return toResponse(inspection);
+        log.info("[JRI] 검사 결과 {} 완료 - id: {}, seq: {}, indBcd: {}, matnr: {}, lotnr: {}",
+                isUpdate ? "갱신(UPDATE)" : "신규(INSERT)",
+                inspection.getId(), inspection.getSeq(),
+                inspection.getIndBcd(), inspection.getMatnr(), inspection.getLotnr());
+
+        JriInspectionResponse response = toResponse(inspection);
+        response.setIsUpdate(isUpdate);
+        return response;
     }
 
     /**
      * MultipartFile → 디스크 저장
      * @return 저장된 파일의 상대 경로 (null if no file)
      */
-    private String saveUploadedImage(MultipartFile file, String prefix, String inspectionId) {
+    private String saveUploadedImage(MultipartFile file, String prefix, String inspectionId, String indBcdSafe) {
         if (file == null || file.isEmpty()) return null;
         try {
             Path dir = Paths.get(uploadDir);
@@ -143,8 +224,8 @@ public class JriInspectionService {
             if (originalName != null && originalName.contains(".")) {
                 ext = originalName.substring(originalName.lastIndexOf('.') + 1);
             }
-            String filename = String.format("%s_%s_%s.%s", prefix, inspectionId.substring(0, 8),
-                    System.currentTimeMillis(), ext);
+            String filename = String.format("%s_%s_%s_%s.%s", prefix, indBcdSafe,
+                    System.currentTimeMillis(), inspectionId.substring(0, 8), ext);
             Path filePath = dir.resolve(filename);
             file.transferTo(filePath.toFile());
             return "/uploads/jri/" + filename;
@@ -173,11 +254,47 @@ public class JriInspectionService {
     }
 
     /**
+     * 통합 검색: 바코드 + 기간 필터 조합
+     *
+     * @param indBcd   개별바코드 (LIKE 검색, null 허용)
+     * @param dateFrom 시작일 (yyyy-MM-dd, null이면 전체)
+     * @param dateTo   종료일 (yyyy-MM-dd, null이면 전체)
+     */
+    public Page<JriInspectionResponse> searchInspections(String indBcd, String dateFrom, String dateTo, Pageable pageable) {
+        boolean hasIndBcd = indBcd != null && !indBcd.isBlank();
+        boolean hasDateFrom = dateFrom != null && !dateFrom.isBlank();
+        boolean hasDateTo = dateTo != null && !dateTo.isBlank();
+
+        // 필터 조건 없으면 전체 조회
+        if (!hasIndBcd && !hasDateFrom && !hasDateTo) {
+            return listInspections(pageable);
+        }
+
+        LocalDateTime from = hasDateFrom ? LocalDate.parse(dateFrom).atStartOfDay() : LocalDateTime.of(2000, 1, 1, 0, 0);
+        LocalDateTime to = hasDateTo ? LocalDate.parse(dateTo).atTime(LocalTime.MAX) : LocalDateTime.of(2099, 12, 31, 23, 59, 59);
+
+        if (hasIndBcd) {
+            return inspectionRepository.searchByIndBcdAndDateRange(indBcd, from, to, pageable)
+                    .map(this::toResponse);
+        } else {
+            return inspectionRepository.findByDateRange(from, to, pageable)
+                    .map(this::toResponse);
+        }
+    }
+
+    /**
      * 바코드 검색 (페이징)
      */
     public Page<JriInspectionResponse> searchByIndBcd(String keyword, Pageable pageable) {
         return inspectionRepository.searchByIndBcd(keyword, pageable)
                 .map(this::toResponse);
+    }
+
+    /**
+     * 동일 자재+LOT+바코드 조합 존재 여부 확인 (Upsert 사전 체크)
+     */
+    public boolean existsByMatnrAndLotnrAndIndBcd(String matnr, String lotnr, String indBcd) {
+        return inspectionRepository.findByMatnrAndLotnrAndIndBcd(matnr, lotnr, indBcd).isPresent();
     }
 
     /**
@@ -225,6 +342,7 @@ public class JriInspectionService {
                 .seq(entity.getSeq())
                 .inspItemGrpCd(entity.getInspItemGrpCd())
                 .matnr(entity.getMatnr())
+                .matnrNm(entity.getMatnrNm())
                 .werks(entity.getWerks())
                 .msrmDate(entity.getMsrmDate())
                 .prcSeqno(entity.getPrcSeqno())
@@ -257,8 +375,13 @@ public class JriInspectionService {
                 .manualAddedCount(entity.getManualAddedCount())
                 .manualRemovedCount(entity.getManualRemovedCount())
                 .originalImagePath(entity.getOriginalImagePath())
+                .originalImageName(entity.getOriginalImageName())
+                .originalImageDir(entity.getOriginalImageDir())
                 .resultImagePath(entity.getResultImagePath())
+                .resultImageName(entity.getResultImageName())
+                .resultImageDir(entity.getResultImageDir())
                 .operatorId(entity.getOperatorId())
+                .operatorNm(entity.getOperatorNm())
                 .deviceId(entity.getDeviceId())
                 .status(entity.getStatus())
                 .build();

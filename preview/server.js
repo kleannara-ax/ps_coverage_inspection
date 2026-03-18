@@ -14,6 +14,7 @@ if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 // ──────── In-Memory DB ────────
 let inspections = [];
 let seqCounter = 0;
+// 보관 건수 제한 없음 — 페이지네이션으로 전체 데이터 조회
 
 // ──────── MIME Types ────────
 const MIME = {
@@ -78,17 +79,18 @@ function paginate(arr, page, size) {
  * Base64 Data URL → 파일 저장 (레거시 JSON 방식 호환)
  * @returns {string|null} 저장된 파일의 URL 경로
  */
-function saveBase64Image(dataUrl, prefix) {
+function saveBase64Image(dataUrl, prefix, indBcd) {
   if (!dataUrl || !dataUrl.startsWith('data:image/')) return null;
   try {
     const match = dataUrl.match(/^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/);
     if (!match) return null;
     const ext = match[1] === 'jpeg' ? 'jpg' : match[1];
     const buffer = Buffer.from(match[2], 'base64');
-    const filename = `${prefix}_${Date.now()}_${randomUUID().slice(0, 8)}.${ext}`;
+    const bcd = (indBcd || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `${prefix}_${bcd}_${Date.now()}_${randomUUID().slice(0, 8)}.${ext}`;
     const filePath = path.join(UPLOAD_DIR, filename);
     fs.writeFileSync(filePath, buffer);
-    return `/uploads/${filename}`;
+    return { filename, path: `/uploads/${filename}`, fullPath: filePath };
   } catch (err) {
     console.error('이미지 저장 실패:', err.message);
     return null;
@@ -99,13 +101,14 @@ function saveBase64Image(dataUrl, prefix) {
  * Binary buffer → 파일 비동기 저장 (multipart 방식)
  * @returns {Promise<string|null>} 저장된 파일의 URL 경로
  */
-async function saveImageBuffer(buffer, prefix, ext) {
+async function saveImageBuffer(buffer, prefix, ext, indBcd) {
   if (!buffer || !buffer.length) return null;
   try {
-    const filename = `${prefix}_${Date.now()}_${randomUUID().slice(0, 8)}.${ext}`;
+    const bcd = (indBcd || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `${prefix}_${bcd}_${Date.now()}_${randomUUID().slice(0, 8)}.${ext}`;
     const filePath = path.join(UPLOAD_DIR, filename);
     await fsp.writeFile(filePath, buffer);
-    return `/uploads/${filename}`;
+    return { filename, path: `/uploads/${filename}`, fullPath: filePath };
   } catch (err) {
     console.error('이미지 저장 실패:', err.message);
     return null;
@@ -166,7 +169,7 @@ async function handleSave(req, res) {
   const startTime = Date.now();
   const contentType = req.headers['content-type'] || '';
 
-  let body, originalImagePath = null, resultImagePath = null;
+  let body, originalImagePath = null, resultImagePath = null, originalImageName = null, resultImageName = null;
 
   if (contentType.includes('multipart/form-data')) {
     // ── Multipart 방식 (최적화: JPEG binary 직접 저장) ──
@@ -177,101 +180,248 @@ async function handleSave(req, res) {
     body = parsed.metadata;
 
     // 바이너리 이미지를 비동기로 저장 (fs.writeFileSync 대비 non-blocking)
-    const [origPath, resPath] = await Promise.all([
-      saveImageBuffer(parsed.originalImage, 'original', 'jpg'),
-      saveImageBuffer(parsed.resultImage, 'result', 'jpg'),
+    const indBcdForFile = body.indBcd || null;
+    const [origResult, resResult] = await Promise.all([
+      saveImageBuffer(parsed.originalImage, 'original', 'jpg', indBcdForFile),
+      saveImageBuffer(parsed.resultImage, 'result', 'jpg', indBcdForFile),
     ]);
-    originalImagePath = origPath;
-    resultImagePath = resPath;
+    originalImagePath = origResult ? origResult.path : null;
+    resultImagePath = resResult ? resResult.path : null;
+    originalImageName = origResult ? origResult.filename : null;
+    resultImageName = resResult ? resResult.filename : null;
   } else {
     // ── JSON 방식 (레거시 호환) ──
     body = await readBody(req);
-    originalImagePath = saveBase64Image(body.originalImageBase64, 'original');
-    resultImagePath = saveBase64Image(body.resultImageBase64, 'result');
+    const indBcdForFile = body.indBcd || null;
+    const origResult = saveBase64Image(body.originalImageBase64, 'original', indBcdForFile);
+    const resResult = saveBase64Image(body.resultImageBase64, 'result', indBcdForFile);
+    originalImagePath = origResult ? origResult.path : null;
+    resultImagePath = resResult ? resResult.path : null;
+    originalImageName = origResult ? origResult.filename : null;
+    resultImageName = resResult ? resResult.filename : null;
   }
 
   seqCounter++;
 
   const indBcd = body.indBcd || null;
-  let indBcdSeq = body.indBcdSeq || null;
-  if (!indBcdSeq && indBcd) {
-    const count = inspections.filter(i => i.indBcd === indBcd).length;
-    indBcdSeq = String(count + 1);
+  const matnr = body.matnr || null;
+  const lotnr = body.lotnr || null;
+
+  // ── Upsert: 동일 자재 + LOT + 개별바코드 조합이 있으면 UPDATE ──
+  let existing = null;
+  let isUpdate = false;
+  if (matnr && lotnr && indBcd) {
+    existing = inspections.find(i => i.matnr === matnr && i.lotnr === lotnr && i.indBcd === indBcd);
   }
 
-  const record = {
-    id: randomUUID(),
-    seq: seqCounter,
-    inspItemGrpCd: body.inspItemGrpCd || null,
-    matnr: body.matnr || null,
-    matnrNm: body.matnrNm || null,
-    werks: body.werks || null,
-    msrmDate: body.msrmDate || new Date().toISOString(),
-    prcSeqno: body.prcSeqno || null,
-    lotnr: body.lotnr || null,
-    indBcd,
-    indBcdSeq,
-    inspectedAt: body.inspectedAt || new Date().toISOString(),
-    thresholdMax: body.thresholdMax ?? 115,
-    totalCount: body.totalCount ?? 0,
-    coverageRatio: body.coverageRatio ?? 0,
-    densityCount: body.densityCount ?? 0,
-    densityRatio: body.densityRatio ?? 0,
-    sizeUniformityScore: body.sizeUniformityScore ?? 0,
-    distributionUniformityScore: body.distributionUniformityScore ?? 0,
-    meanSize: body.meanSize ?? 0,
-    stdSize: body.stdSize ?? 0,
-    autoCount: body.autoCount ?? 0,
-    manualCount: body.manualCount ?? 0,
-    removedAutoCount: body.removedAutoCount ?? 0,
-    bucketUpTo3: body.bucketUpTo3 ?? 0,
-    bucketUpTo5: body.bucketUpTo5 ?? 0,
-    bucketUpTo7: body.bucketUpTo7 ?? 0,
-    bucketOver7: body.bucketOver7 ?? 0,
-    quadrantTopLeft: body.quadrantTopLeft ?? 0,
-    quadrantTopRight: body.quadrantTopRight ?? 0,
-    quadrantBottomLeft: body.quadrantBottomLeft ?? 0,
-    quadrantBottomRight: body.quadrantBottomRight ?? 0,
-    objectPixelCount: body.objectPixelCount ?? 0,
-    totalPixels: body.totalPixels ?? 0,
-    manualAddedCount: body.manualAddedCount ?? 0,
-    manualRemovedCount: body.manualRemovedCount ?? 0,
-    originalImagePath,
-    resultImagePath,
-    operatorId: body.operatorId || null,
-    operatorNm: body.operatorNm || null,
-    deviceId: body.deviceId || null,
-    status: body.status || null,
-  };
+  if (existing) {
+    // ── UPDATE: 기존 레코드 갱신 ──
+    isUpdate = true;
+    seqCounter--; // seq 롤백 (갱신이므로 새 seq 불필요)
 
-  inspections.unshift(record); // newest first
-  const elapsed = Date.now() - startTime;
-  console.log(`[SAVE] seq=${record.seq}, indBcd=${indBcd}, original=${originalImagePath || 'none'}, result=${resultImagePath || 'none'}, ${elapsed}ms`);
-  sendJSON(res, 201, record);
+    existing.inspectedAt = body.inspectedAt || new Date().toISOString();
+    existing.msrmDate = body.msrmDate || new Date().toISOString();
+    existing.thresholdMax = body.thresholdMax ?? existing.thresholdMax;
+    existing.totalCount = body.totalCount ?? existing.totalCount;
+    existing.coverageRatio = body.coverageRatio ?? existing.coverageRatio;
+    existing.densityCount = body.densityCount ?? existing.densityCount;
+    existing.densityRatio = body.densityRatio ?? existing.densityRatio;
+    existing.sizeUniformityScore = body.sizeUniformityScore ?? existing.sizeUniformityScore;
+    existing.distributionUniformityScore = body.distributionUniformityScore ?? existing.distributionUniformityScore;
+    existing.meanSize = body.meanSize ?? existing.meanSize;
+    existing.stdSize = body.stdSize ?? existing.stdSize;
+    existing.autoCount = body.autoCount ?? existing.autoCount;
+    existing.manualCount = body.manualCount ?? existing.manualCount;
+    existing.removedAutoCount = body.removedAutoCount ?? existing.removedAutoCount;
+    existing.bucketUpTo3 = body.bucketUpTo3 ?? existing.bucketUpTo3;
+    existing.bucketUpTo5 = body.bucketUpTo5 ?? existing.bucketUpTo5;
+    existing.bucketUpTo7 = body.bucketUpTo7 ?? existing.bucketUpTo7;
+    existing.bucketOver7 = body.bucketOver7 ?? existing.bucketOver7;
+    existing.quadrantTopLeft = body.quadrantTopLeft ?? existing.quadrantTopLeft;
+    existing.quadrantTopRight = body.quadrantTopRight ?? existing.quadrantTopRight;
+    existing.quadrantBottomLeft = body.quadrantBottomLeft ?? existing.quadrantBottomLeft;
+    existing.quadrantBottomRight = body.quadrantBottomRight ?? existing.quadrantBottomRight;
+    existing.objectPixelCount = body.objectPixelCount ?? existing.objectPixelCount;
+    existing.totalPixels = body.totalPixels ?? existing.totalPixels;
+    existing.manualAddedCount = body.manualAddedCount ?? existing.manualAddedCount;
+    existing.manualRemovedCount = body.manualRemovedCount ?? existing.manualRemovedCount;
+    if (originalImagePath) { existing.originalImagePath = originalImagePath; existing.originalImageName = originalImageName; existing.originalImageDir = UPLOAD_DIR; }
+    if (resultImagePath) { existing.resultImagePath = resultImagePath; existing.resultImageName = resultImageName; existing.resultImageDir = UPLOAD_DIR; }
+    if (body.matnrNm) existing.matnrNm = body.matnrNm;
+    if (body.operatorId) existing.operatorId = body.operatorId;
+    if (body.operatorNm) existing.operatorNm = body.operatorNm;
+    if (body.deviceId) existing.deviceId = body.deviceId;
+    if (body.status) existing.status = body.status;
+
+    // UPDATE 후 배열에서 최신 위치(앞)로 이동 (FIFO 정리 시 삭제 방지)
+    const existingIdx = inspections.indexOf(existing);
+    if (existingIdx > 0) {
+      inspections.splice(existingIdx, 1);
+      inspections.unshift(existing);
+    }
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[UPDATE] seq=${existing.seq}, indBcd=${indBcd}, matnr=${matnr}, lotnr=${lotnr}, ${elapsed}ms`);
+    sendJSON(res, 200, { ...existing, _action: 'UPDATE', isUpdate: true });
+  } else {
+    // ── INSERT: 신규 레코드 생성 ──
+    let indBcdSeq = body.indBcdSeq || null;
+    if (!indBcdSeq && indBcd) {
+      const count = inspections.filter(i => i.indBcd === indBcd).length;
+      indBcdSeq = String(count + 1);
+    }
+
+    const record = {
+      id: randomUUID(),
+      seq: seqCounter,
+      inspItemGrpCd: body.inspItemGrpCd || null,
+      matnr,
+      matnrNm: body.matnrNm || null,
+      werks: body.werks || null,
+      msrmDate: body.msrmDate || new Date().toISOString(),
+      prcSeqno: body.prcSeqno || null,
+      lotnr,
+      indBcd,
+      indBcdSeq,
+      inspectedAt: body.inspectedAt || new Date().toISOString(),
+      thresholdMax: body.thresholdMax ?? 115,
+      totalCount: body.totalCount ?? 0,
+      coverageRatio: body.coverageRatio ?? 0,
+      densityCount: body.densityCount ?? 0,
+      densityRatio: body.densityRatio ?? 0,
+      sizeUniformityScore: body.sizeUniformityScore ?? 0,
+      distributionUniformityScore: body.distributionUniformityScore ?? 0,
+      meanSize: body.meanSize ?? 0,
+      stdSize: body.stdSize ?? 0,
+      autoCount: body.autoCount ?? 0,
+      manualCount: body.manualCount ?? 0,
+      removedAutoCount: body.removedAutoCount ?? 0,
+      bucketUpTo3: body.bucketUpTo3 ?? 0,
+      bucketUpTo5: body.bucketUpTo5 ?? 0,
+      bucketUpTo7: body.bucketUpTo7 ?? 0,
+      bucketOver7: body.bucketOver7 ?? 0,
+      quadrantTopLeft: body.quadrantTopLeft ?? 0,
+      quadrantTopRight: body.quadrantTopRight ?? 0,
+      quadrantBottomLeft: body.quadrantBottomLeft ?? 0,
+      quadrantBottomRight: body.quadrantBottomRight ?? 0,
+      objectPixelCount: body.objectPixelCount ?? 0,
+      totalPixels: body.totalPixels ?? 0,
+      manualAddedCount: body.manualAddedCount ?? 0,
+      manualRemovedCount: body.manualRemovedCount ?? 0,
+      originalImagePath,
+      originalImageName,
+      originalImageDir: originalImagePath ? UPLOAD_DIR : null,
+      resultImagePath,
+      resultImageName,
+      resultImageDir: resultImagePath ? UPLOAD_DIR : null,
+      operatorId: body.operatorId || null,
+      operatorNm: body.operatorNm || null,
+      deviceId: body.deviceId || null,
+      status: body.status || null,
+    };
+
+    inspections.unshift(record); // newest first
+    const elapsed = Date.now() - startTime;
+    console.log(`[INSERT] seq=${record.seq}, indBcd=${indBcd}, matnr=${matnr}, lotnr=${lotnr}, ${elapsed}ms`);
+    sendJSON(res, 201, { ...record, _action: 'INSERT', isUpdate: false });
+  }
 }
 
-// GET /jri-api/inspections?page=0&size=20
+// GET /jri-api/inspections?page=0&size=20&dateFrom=2026-03-01&dateTo=2026-03-18&indBcd=xxx
 function handleList(req, res, url) {
   const page = parseInt(url.searchParams.get('page') || '0', 10);
   const size = Math.min(parseInt(url.searchParams.get('size') || '20', 10), 100);
-  sendJSON(res, 200, paginate(inspections, page, size));
+  const dateFrom = url.searchParams.get('dateFrom') || '';
+  const dateTo = url.searchParams.get('dateTo') || '';
+  const indBcd = (url.searchParams.get('indBcd') || '').toLowerCase();
+
+  let filtered = inspections;
+
+  // 개별바코드 필터
+  if (indBcd) {
+    filtered = filtered.filter(i => (i.indBcd || '').toLowerCase().includes(indBcd));
+  }
+
+  // 날짜 범위 필터 (inspectedAt 기준)
+  if (dateFrom) {
+    const from = new Date(dateFrom + 'T00:00:00');
+    filtered = filtered.filter(i => {
+      if (!i.inspectedAt) return false;
+      return new Date(i.inspectedAt) >= from;
+    });
+  }
+  if (dateTo) {
+    const to = new Date(dateTo + 'T23:59:59.999');
+    filtered = filtered.filter(i => {
+      if (!i.inspectedAt) return false;
+      return new Date(i.inspectedAt) <= to;
+    });
+  }
+
+  sendJSON(res, 200, paginate(filtered, page, size));
 }
 
-// GET /jri-api/inspections/search?type=indBcd&keyword=xxx&page=0&size=20
+// GET /jri-api/inspections/search?type=indBcd&keyword=xxx&page=0&size=20&dateFrom=2026-03-01&dateTo=2026-03-18
 function handleSearch(req, res, url) {
   const type = (url.searchParams.get('type') || 'indBcd').toLowerCase();
   const keyword = (url.searchParams.get('keyword') || '').toLowerCase();
+  const dateFrom = url.searchParams.get('dateFrom') || '';
+  const dateTo = url.searchParams.get('dateTo') || '';
   const page = parseInt(url.searchParams.get('page') || '0', 10);
   const size = Math.min(parseInt(url.searchParams.get('size') || '20', 10), 100);
 
   let filtered = inspections;
+
+  // 키워드 필터
   if (keyword) {
-    if (type === 'lotnr') filtered = inspections.filter(i => (i.lotnr || '').toLowerCase().includes(keyword));
-    else if (type === 'matnr') filtered = inspections.filter(i => (i.matnr || '').toLowerCase().includes(keyword));
-    else filtered = inspections.filter(i => (i.indBcd || '').toLowerCase().includes(keyword));
+    if (type === 'lotnr') filtered = filtered.filter(i => (i.lotnr || '').toLowerCase().includes(keyword));
+    else if (type === 'matnr') filtered = filtered.filter(i => (i.matnr || '').toLowerCase().includes(keyword));
+    else filtered = filtered.filter(i => (i.indBcd || '').toLowerCase().includes(keyword));
+  }
+
+  // 날짜 범위 필터 (inspectedAt 기준)
+  if (dateFrom) {
+    const from = new Date(dateFrom + 'T00:00:00');
+    filtered = filtered.filter(i => {
+      if (!i.inspectedAt) return false;
+      return new Date(i.inspectedAt) >= from;
+    });
+  }
+  if (dateTo) {
+    const to = new Date(dateTo + 'T23:59:59.999');
+    filtered = filtered.filter(i => {
+      if (!i.inspectedAt) return false;
+      return new Date(i.inspectedAt) <= to;
+    });
   }
 
   sendJSON(res, 200, paginate(filtered, page, size));
+}
+
+// GET /jri-api/inspections/check-exists?matnr=xxx&lotnr=xxx&indBcd=xxx
+function handleCheckExists(req, res, url) {
+  const matnr = url.searchParams.get('matnr') || '';
+  const lotnr = url.searchParams.get('lotnr') || '';
+  const indBcd = url.searchParams.get('indBcd') || '';
+
+  if (!matnr || !lotnr || !indBcd) {
+    return sendJSON(res, 200, { exists: false });
+  }
+
+  const existing = inspections.find(i =>
+    i.matnr === matnr && i.lotnr === lotnr && i.indBcd === indBcd
+  );
+
+  sendJSON(res, 200, {
+    exists: !!existing,
+    record: existing ? {
+      id: existing.id,
+      seq: existing.seq,
+      inspectedAt: existing.inspectedAt,
+      coverageRatio: existing.coverageRatio,
+      totalCount: existing.totalCount,
+    } : null,
+  });
 }
 
 // GET /jri-api/inspections/:id
@@ -417,6 +567,11 @@ const server = http.createServer(async (req, res) => {
     // Search
     if (pathname === '/jri-api/inspections/search' && method === 'GET') {
       return handleSearch(req, res, url);
+    }
+
+    // 기존 레코드 존재 여부 확인 (Upsert 사전 체크용)
+    if (pathname === '/jri-api/inspections/check-exists' && method === 'GET') {
+      return handleCheckExists(req, res, url);
     }
 
     // Collection

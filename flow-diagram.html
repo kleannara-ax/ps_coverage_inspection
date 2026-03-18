@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MES ↔ JRI API 통신 흐름도</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif; background: #f0f4f8; padding: 30px; }
+.container { max-width: 960px; margin: 0 auto; background: #fff; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); padding: 40px; }
+h1 { text-align: center; font-size: 22px; color: #1e293b; margin-bottom: 8px; }
+.subtitle { text-align: center; font-size: 13px; color: #94a3b8; margin-bottom: 36px; }
+
+/* Systems Row */
+.systems { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; padding: 0 40px; }
+.sys-box { width: 180px; padding: 20px; border-radius: 12px; text-align: center; font-weight: 700; font-size: 16px; color: #fff; position: relative; }
+.sys-mes { background: linear-gradient(135deg, #3b82f6, #2563eb); box-shadow: 0 4px 14px rgba(37,99,235,0.3); }
+.sys-jri { background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 4px 14px rgba(5,150,105,0.3); }
+.sys-db { background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 4px 14px rgba(217,119,6,0.3); width: 140px; padding: 14px; font-size: 14px; }
+.sys-label { font-size: 11px; opacity: 0.85; margin-top: 2px; font-weight: 400; }
+.arrow-between { font-size: 28px; color: #cbd5e1; }
+
+/* Flow Section */
+.flow { margin-bottom: 32px; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+.flow:last-child { margin-bottom: 0; }
+.flow-header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; font-weight: 700; font-size: 15px; color: #fff; }
+.flow-header .num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(255,255,255,0.25); font-size: 14px; font-weight: 800; flex-shrink: 0; }
+.flow-header .badge { font-size: 11px; background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 4px; font-weight: 500; }
+.flow1 .flow-header { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+.flow2 .flow-header { background: linear-gradient(90deg, #10b981, #34d399); }
+.flow3 .flow-header { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+.flow-body { padding: 20px; background: #fafbfc; }
+
+/* Arrow Diagram */
+.arrow-row { display: flex; align-items: center; justify-content: center; gap: 0; margin-bottom: 16px; }
+.arrow-box { padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; text-align: center; min-width: 100px; }
+.arrow-box.mes { background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.arrow-box.jri { background: #d1fae5; color: #047857; border: 1px solid #a7f3d0; }
+.arrow-box.db { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+.arrow-box.browser { background: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+.arrow-line { display: flex; align-items: center; padding: 0 8px; }
+.arrow-line .line { width: 60px; height: 2px; background: #94a3b8; position: relative; }
+.arrow-line .line::after { content: ''; position: absolute; right: -1px; top: -4px; border: 5px solid transparent; border-left-color: #94a3b8; }
+.arrow-line.reverse .line::after { right: auto; left: -1px; border-left-color: transparent; border-right-color: #94a3b8; }
+.arrow-label { font-size: 10px; color: #64748b; text-align: center; margin-top: -4px; font-weight: 500; }
+
+/* Detail */
+.detail { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin-top: 12px; }
+.detail-title { font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.detail-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; font-size: 12.5px; }
+.detail-row .key { color: #3b82f6; font-weight: 600; font-family: 'Courier New', monospace; min-width: 100px; }
+.detail-row .val { color: #475569; }
+.code-block { background: #1e293b; color: #e2e8f0; padding: 12px 14px; border-radius: 6px; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.6; margin-top: 8px; overflow-x: auto; white-space: pre; }
+.code-block .k { color: #7dd3fc; }
+.code-block .v { color: #fde68a; }
+.code-block .s { color: #86efac; }
+
+.note { font-size: 11.5px; color: #64748b; margin-top: 10px; padding: 8px 12px; background: #f8fafc; border-left: 3px solid #cbd5e1; border-radius: 0 4px 4px 0; }
+.note strong { color: #334155; }
+
+/* Method badge */
+.method { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 700; font-family: monospace; margin-right: 4px; }
+.method.get { background: #dbeafe; color: #1d4ed8; }
+.method.post { background: #d1fae5; color: #047857; }
+
+/* Trigger */
+.trigger { display: inline-flex; align-items: center; gap: 4px; background: #fef3c7; color: #92400e; font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: 600; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>MES ↔ JRI API 통신 흐름도</h1>
+  <p class="subtitle">Jumbo Roll Share Inspector - Manufacturing Execution System Integration</p>
+
+  <!-- System Boxes -->
+  <div class="systems">
+    <div class="sys-box sys-mes">MES<div class="sys-label">Manufacturing Execution System</div></div>
+    <span class="arrow-between">⇄</span>
+    <div class="sys-box sys-jri">JRI<div class="sys-label">Jumbo Roll Share Inspector</div></div>
+    <span class="arrow-between">⇄</span>
+    <div class="sys-box sys-db">DB<div class="sys-label">검사 이력 저장소</div></div>
+  </div>
+
+  <!-- Flow 1 -->
+  <div class="flow flow1">
+    <div class="flow-header">
+      <span class="num">1</span> 검사 실행 <span class="badge">MES → JRI</span>
+    </div>
+    <div class="flow-body">
+      <div class="arrow-row">
+        <div class="arrow-box mes">MES</div>
+        <div class="arrow-line">
+          <div class="line" style="width:100px"></div>
+        </div>
+        <div class="arrow-box browser">브라우저 URL 호출</div>
+        <div class="arrow-line">
+          <div class="line" style="width:100px"></div>
+        </div>
+        <div class="arrow-box jri">JRI 검사 화면</div>
+      </div>
+      <div class="arrow-label"><span class="method get">GET</span> URL 파라미터로 메타데이터 전달</div>
+
+      <div class="detail">
+        <div class="detail-title">URL Parameters</div>
+        <div class="detail-row"><span class="key">IND_BCD</span><span class="val">개별바코드 (필수)</span></div>
+        <div class="detail-row"><span class="key">LOT_NO</span><span class="val">LOT 번호</span></div>
+        <div class="detail-row"><span class="key">MATNR</span><span class="val">자재코드</span></div>
+        <div class="detail-row"><span class="key">MATNR_NM</span><span class="val">자재명 (URL 인코딩 필요)</span></div>
+        <div class="detail-row"><span class="key">USERID</span><span class="val">검사자 ID</span></div>
+        <div class="detail-row"><span class="key">USERNM</span><span class="val">검사자명 (URL 인코딩 필요)</span></div>
+        <div class="code-block"><span class="k">GET</span> <span class="s">https://jri.company.com/</span><span class="v">?IND_BCD=26228J0039&LOT_NO=6228J30035&MATNR=H3SM1240-00000000&MATNR_NM=%EC%A0%90%EB%B3%B4%EB%A1%A4&USERID=USER01&USERNM=%ED%99%8D%EA%B8%B8%EB%8F%99</span></div>
+      </div>
+      <div class="note"><strong>참고:</strong> 순번(차수)은 JRI가 동일 바코드 기준으로 DB에서 자동 채번합니다. MES에서 보내지 않아도 됩니다.</div>
+    </div>
+  </div>
+
+  <!-- Flow 2 -->
+  <div class="flow flow2">
+    <div class="flow-header">
+      <span class="num">2</span> 검사 결과 전송 <span class="badge">JRI → MES</span>
+    </div>
+    <div class="flow-body">
+      <div class="arrow-row">
+        <div class="arrow-box jri">JRI</div>
+        <div class="arrow-line">
+          <div class="line" style="width:80px"></div>
+        </div>
+        <div class="arrow-box db">DB 저장</div>
+        <div class="arrow-line" style="opacity:0.3"><div class="line" style="width:40px"></div></div>
+        <div class="arrow-box jri" style="opacity:0.4; font-size:11px;">저장 완료</div>
+        <div class="arrow-line">
+          <div class="line" style="width:80px"></div>
+        </div>
+        <div class="arrow-box mes">MES</div>
+      </div>
+      <div class="arrow-label"><span class="method post">POST</span> DB 저장 성공 후 자동으로 MES에 결과 전송</div>
+
+      <div class="detail">
+        <div class="detail-title">Request — POST {MES_엔드포인트}</div>
+        <div class="detail-row"><span class="key">IND_BCD</span><span class="val">개별바코드 (string)</span></div>
+        <div class="detail-row"><span class="key">ResultData</span><span class="val">커버리지 결과 값 — ppm 단위 (number)</span></div>
+        <div class="code-block"><span class="k">POST</span> <span class="s">{MES_ENDPOINT_URL}</span>
+<span class="k">Content-Type:</span> application/json
+
+{
+  <span class="k">"IND_BCD"</span>: <span class="v">"26228J0039"</span>,
+  <span class="k">"ResultData"</span>: <span class="v">265.30</span>
+}</div>
+      </div>
+      <div class="detail" style="margin-top:8px">
+        <div class="detail-title">Expected Response (MES가 반환)</div>
+        <div class="code-block">{
+  <span class="k">"success"</span>: <span class="v">true</span>,
+  <span class="k">"message"</span>: <span class="s">"수신 완료"</span>
+}</div>
+      </div>
+      <div class="trigger">⚡ 트리거: 사용자가 [검사 결과 저장] 버튼 클릭 시 자동 실행</div>
+    </div>
+  </div>
+
+  <!-- Flow 3 -->
+  <div class="flow flow3">
+    <div class="flow-header">
+      <span class="num">3</span> 검사 결과 조회 <span class="badge">MES → JRI</span>
+    </div>
+    <div class="flow-body">
+      <div class="arrow-row">
+        <div class="arrow-box mes">MES</div>
+        <div class="arrow-line">
+          <div class="line" style="width:100px"></div>
+        </div>
+        <div class="arrow-box browser">브라우저 URL 호출</div>
+        <div class="arrow-line">
+          <div class="line" style="width:100px"></div>
+        </div>
+        <div class="arrow-box jri">JRI 이력 화면</div>
+        <div class="arrow-line" style="opacity:0.5"><div class="line" style="width:40px"></div></div>
+        <div class="arrow-box db" style="font-size:11px">이력 조회</div>
+      </div>
+      <div class="arrow-label"><span class="method get">GET</span> 개별바코드로 해당 검사 이력만 필터링 조회</div>
+
+      <div class="detail">
+        <div class="detail-title">URL Parameters</div>
+        <div class="detail-row"><span class="key">tab</span><span class="val"><code>history</code> (카드 뷰) 또는 <code>history-table</code> (테이블 뷰)</span></div>
+        <div class="detail-row"><span class="key">search</span><span class="val">검색할 개별바코드</span></div>
+        <div class="code-block"><span class="k">카드 뷰</span>   <span class="s">https://jri.company.com/</span><span class="v">?tab=history&search=26228J0039</span>
+<span class="k">테이블 뷰</span> <span class="s">https://jri.company.com/</span><span class="v">?tab=history-table&search=26228J0039</span></div>
+      </div>
+      <div class="note"><strong>결과:</strong> 해당 개별바코드(26228J0039)의 검사 이력만 필터링되어 표시됩니다. 동일 바코드로 여러 번 검사한 경우 1차, 2차, 3차... 모두 조회됩니다.</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

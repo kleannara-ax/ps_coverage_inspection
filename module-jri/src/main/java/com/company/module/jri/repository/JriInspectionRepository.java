@@ -56,4 +56,22 @@ public interface JriInspectionRepository extends JpaRepository<JriInspection, St
     /** 같은 바코드의 검사 차수 카운트 (ind_bcd_seq 자동증가용) */
     @Query("SELECT COUNT(i) FROM JriInspection i WHERE i.indBcd = :indBcd")
     long countByIndBcd(@Param("indBcd") String indBcd);
+
+    /** 동일 자재 + LOT + 개별바코드 조합으로 기존 레코드 조회 (재검사 UPDATE 용) */
+    @Query("SELECT i FROM JriInspection i WHERE i.matnr = :matnr AND i.lotnr = :lotnr AND i.indBcd = :indBcd")
+    Optional<JriInspection> findByMatnrAndLotnrAndIndBcd(
+            @Param("matnr") String matnr,
+            @Param("lotnr") String lotnr,
+            @Param("indBcd") String indBcd
+    );
+
+    /** 바코드 LIKE + 기간 복합 검색 */
+    @Query("SELECT i FROM JriInspection i WHERE i.indBcd LIKE %:keyword% AND i.inspectedAt BETWEEN :from AND :to ORDER BY i.inspectedAt DESC")
+    Page<JriInspection> searchByIndBcdAndDateRange(
+            @Param("keyword") String keyword,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            Pageable pageable
+    );
+
 }
