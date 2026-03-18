@@ -73,6 +73,12 @@ document.addEventListener('DOMContentLoaded', () => {
     historyTablePagination: document.getElementById('historyTablePagination'),
     historySearchInput: document.getElementById('historySearchInput'),
     historySearchButton: document.getElementById('historySearchButton'),
+    // 이력 테이블 탭 필터
+    tableFilterDateFrom: document.getElementById('tableFilterDateFrom'),
+    tableFilterDateTo: document.getElementById('tableFilterDateTo'),
+    tableFilterIndBcd: document.getElementById('tableFilterIndBcd'),
+    tableFilterSearchButton: document.getElementById('tableFilterSearchButton'),
+    tableFilterResetButton: document.getElementById('tableFilterResetButton'),
     originalWrapper: document.getElementById('originalWrapper'),
     originalCanvas: document.getElementById('originalCanvas'),
     originalPlaceholder: document.getElementById('originalPlaceholder'),
@@ -295,6 +301,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (elements.exportHistoryButton) {
       elements.exportHistoryButton.addEventListener('click', handleExportExcel)
+    }
+
+    // 이력 테이블 탭 필터
+    if (elements.tableFilterSearchButton) {
+      elements.tableFilterSearchButton.addEventListener('click', () => loadHistoryFromServer(0))
+    }
+    if (elements.tableFilterResetButton) {
+      elements.tableFilterResetButton.addEventListener('click', () => {
+        if (elements.tableFilterDateFrom) elements.tableFilterDateFrom.value = ''
+        if (elements.tableFilterDateTo) elements.tableFilterDateTo.value = ''
+        if (elements.tableFilterIndBcd) elements.tableFilterIndBcd.value = ''
+        loadHistoryFromServer(0)
+      })
+    }
+    if (elements.tableFilterIndBcd) {
+      elements.tableFilterIndBcd.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') loadHistoryFromServer(0)
+      })
     }
   }
 
@@ -699,7 +723,32 @@ document.addEventListener('DOMContentLoaded', () => {
       const m = state.currentMetrics || getEmptyMetrics()
 
       const indBcdValue = (elements.indBcdInput?.value || '').trim() || null
+      const lotnrValue = (elements.lotnrInput?.value || '').trim() || null
+      const matnrValue = (elements.matnrInput?.value || '').trim() || null
       const inspectedAtValue = state.inspectionStartedAt || new Date()
+
+      // ── Upsert 사전 체크: 동일 자재+LOT+바코드 조합 존재 여부 확인 ──
+      if (matnrValue && lotnrValue && indBcdValue) {
+        try {
+          updateProcessingMessage('기존 검사 결과 확인 중…')
+          const checkUrl = `${API_BASE}/check-exists?matnr=${encodeURIComponent(matnrValue)}&lotnr=${encodeURIComponent(lotnrValue)}&indBcd=${encodeURIComponent(indBcdValue)}`
+          const checkRes = await axios.get(checkUrl)
+          if (checkRes.data.exists) {
+            setProcessingOverlay(false)
+            const confirmed = window.confirm(
+              '기존에 존재하던 검사 결과를 변경하시겠습니까?\n\n' +
+              '예를 누르면, 기존 검사 결과는 사라지고 새 데이터로 업데이트 됩니다.'
+            )
+            if (!confirmed) {
+              setSaveMessage('저장이 취소되었습니다.', 'muted')
+              return
+            }
+            setProcessingOverlay(true, '검사 결과 저장', '이미지를 압축하는 중…')
+          }
+        } catch (checkErr) {
+          console.warn('[CHECK-EXISTS] 사전 체크 실패, 저장 계속 진행:', checkErr.message)
+        }
+      }
 
       // Canvas에서 JPEG Blob으로 캡처 (PNG 대비 5-10배 빠름)
       const [originalBlob, resultBlob] = await Promise.all([
@@ -715,8 +764,8 @@ document.addEventListener('DOMContentLoaded', () => {
         msrmDate: state.msrmDate ? state.msrmDate.toISOString() : new Date().toISOString(),
         prcSeqno: elements.prcSeqnoInput?.value ? Number(elements.prcSeqnoInput.value) : null,
         indBcd: indBcdValue,
-        lotnr: (elements.lotnrInput?.value || '').trim() || null,
-        matnr: (elements.matnrInput?.value || '').trim() || null,
+        lotnr: lotnrValue,
+        matnr: matnrValue,
         matnrNm: (elements.matnrNmInput?.value || '').trim() || null,
         inspectedAt: inspectedAtValue.toISOString(),
         thresholdMax: state.lastThreshold,
@@ -756,11 +805,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const autoTitle = indBcdValue
         ? `${indBcdValue} - ${formatDateTime(inspectedAtValue.toISOString())}`
         : `검사 ${formatDateTime(inspectedAtValue.toISOString())}`
-      setSaveMessage(`${autoTitle} 저장 완료 (seq: ${saved.seq}, 차수: ${saved.indBcdSeq || '-'}) [${elapsed}초]`, 'success')
+      const isUpdate = saved._action === 'UPDATE' || saved.isUpdate === true
+      const actionLabel = isUpdate ? '갱신(UPDATE)' : '신규저장(INSERT)'
+      setSaveMessage(`${autoTitle} ${actionLabel} 완료 (seq: ${saved.seq}, 차수: ${saved.indBcdSeq || '-'}) [${elapsed}초]`, 'success')
       loadHistoryFromServer(0)
 
       // ── MES 결과 전송 (DB 저장 성공 후 자동 실행) ──
-      await sendResultToMes(saved, m)
+      await sendResultToMes(saved, m, isUpdate)
     } catch (error) {
       console.error(error)
       setSaveMessage('저장 중 오류가 발생했습니다: ' + (error.response?.data?.error || error.message), 'error')
@@ -775,7 +826,7 @@ document.addEventListener('DOMContentLoaded', () => {
    * @param {object} saved - 서버에서 저장된 inspection 레코드
    * @param {object} metrics - 현재 검사 지표
    */
-  async function sendResultToMes(saved, metrics) {
+  async function sendResultToMes(saved, metrics, isUpdate = false) {
     const indBcd = saved.indBcd
     if (!indBcd) {
       console.warn('[MES] 개별바코드(IND_BCD)가 없어 MES 전송을 건너뜁니다.')
@@ -801,8 +852,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const mesResult = mesRes.data
 
       if (mesResult.success) {
+        const actionLabel = isUpdate ? '갱신' : '저장'
         setSaveMessage(
-          `${saved.indBcd} 저장 완료 (seq: ${saved.seq}) + MES 전송 성공 (커버리지: ${coveragePpm} ppm)`,
+          `${saved.indBcd} ${actionLabel} 완료 (seq: ${saved.seq}) + MES 전송 성공 (커버리지: ${coveragePpm} ppm)`,
           'success'
         )
         console.log('[MES] 전송 성공:', mesResult)
@@ -828,10 +880,28 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadHistoryFromServer(page) {
     try {
       currentHistoryPage = page
+      // 검사 이력 탭 검색 (기존 호환)
       const keyword = elements.historySearchInput ? elements.historySearchInput.value.trim() : ''
-      let url = keyword
-        ? `${API_BASE}/search?type=indBcd&keyword=${encodeURIComponent(keyword)}&page=${page}&size=${MAX_HISTORY_PAGE_SIZE}`
-        : `${API_BASE}?page=${page}&size=${MAX_HISTORY_PAGE_SIZE}`
+      // 이력 테이블 탭 필터
+      const dateFrom = elements.tableFilterDateFrom ? elements.tableFilterDateFrom.value : ''
+      const dateTo = elements.tableFilterDateTo ? elements.tableFilterDateTo.value : ''
+      const indBcd = elements.tableFilterIndBcd ? elements.tableFilterIndBcd.value.trim() : ''
+
+      let url
+      if (keyword) {
+        // 검사 이력(카드) 탭 기존 검색
+        url = `${API_BASE}/search?type=indBcd&keyword=${encodeURIComponent(keyword)}&page=${page}&size=${MAX_HISTORY_PAGE_SIZE}`
+        if (dateFrom) url += `&dateFrom=${dateFrom}`
+        if (dateTo) url += `&dateTo=${dateTo}`
+      } else {
+        // 기본 목록 + 이력 테이블 탭 필터
+        const params = new URLSearchParams({ page: String(page), size: String(MAX_HISTORY_PAGE_SIZE) })
+        if (dateFrom) params.set('dateFrom', dateFrom)
+        if (dateTo) params.set('dateTo', dateTo)
+        if (indBcd) params.set('indBcd', indBcd)
+        url = `${API_BASE}?${params.toString()}`
+      }
+
       const res = await axios.get(url)
       const data = res.data
       const entries = data.content || []
@@ -1067,7 +1137,11 @@ document.addEventListener('DOMContentLoaded', () => {
         <td class="px-2 py-2 text-[11px] text-slate-500">${v(e.status)}</td>
         <!-- 이미지 -->
         <td class="px-2 py-2 text-center">${e.originalImagePath ? `<a href="${escapeHtml(e.originalImagePath)}" target="_blank" class="text-[10px] text-indigo-500 underline">보기</a>` : '<span class="text-[10px] text-slate-300">-</span>'}</td>
+        <td class="px-2 py-2 text-[11px] text-slate-500 font-mono break-all">${v(e.originalImageName)}</td>
+        <td class="px-2 py-2 text-[11px] text-slate-500 font-mono break-all">${v(e.originalImageDir)}</td>
         <td class="px-2 py-2 text-center">${e.resultImagePath ? `<a href="${escapeHtml(e.resultImagePath)}" target="_blank" class="text-[10px] text-indigo-500 underline">보기</a>` : '<span class="text-[10px] text-slate-300">-</span>'}</td>
+        <td class="px-2 py-2 text-[11px] text-slate-500 font-mono break-all">${v(e.resultImageName)}</td>
+        <td class="px-2 py-2 text-[11px] text-slate-500 font-mono break-all">${v(e.resultImageDir)}</td>
         <!-- 관리 -->
         <td class="px-2 py-2 text-center sticky right-0 bg-white"><button type="button" class="inline-flex items-center rounded border border-rose-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-rose-500 hover:bg-rose-50" data-history-action="delete" data-history-id="${e.id}"><i class="fas fa-trash-alt"></i></button></td>
       </tr>`
@@ -1091,11 +1165,24 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       setSaveMessage('Excel 내보내기 준비 중…', 'muted')
 
-      // 전체 데이터 로드 (서버에서 최대 1000건)
+      // 전체 데이터 로드 (서버에서 최대 1000건, 현재 필터 적용)
       const keyword = elements.historySearchInput ? elements.historySearchInput.value.trim() : ''
-      const url = keyword
-        ? `${API_BASE}/search?type=indBcd&keyword=${encodeURIComponent(keyword)}&page=0&size=1000`
-        : `${API_BASE}?page=0&size=1000`
+      const dateFrom = elements.tableFilterDateFrom ? elements.tableFilterDateFrom.value : ''
+      const dateTo = elements.tableFilterDateTo ? elements.tableFilterDateTo.value : ''
+      const indBcd = elements.tableFilterIndBcd ? elements.tableFilterIndBcd.value.trim() : ''
+
+      let url
+      if (keyword) {
+        url = `${API_BASE}/search?type=indBcd&keyword=${encodeURIComponent(keyword)}&page=0&size=1000`
+        if (dateFrom) url += `&dateFrom=${dateFrom}`
+        if (dateTo) url += `&dateTo=${dateTo}`
+      } else {
+        const params = new URLSearchParams({ page: '0', size: '1000' })
+        if (dateFrom) params.set('dateFrom', dateFrom)
+        if (dateTo) params.set('dateTo', dateTo)
+        if (indBcd) params.set('indBcd', indBcd)
+        url = `${API_BASE}?${params.toString()}`
+      }
       const res = await axios.get(url)
       const allEntries = res.data.content || []
 
@@ -1144,6 +1231,12 @@ document.addEventListener('DOMContentLoaded', () => {
         '검사자ID': e.operatorId || '',
         '검사자명': e.operatorNm || '',
         '상태': e.status || '',
+        '원본이미지 경로': e.originalImagePath || '',
+        '원본이미지 파일명': e.originalImageName || '',
+        '원본이미지 저장경로': e.originalImageDir || '',
+        '결과이미지 경로': e.resultImagePath || '',
+        '결과이미지 파일명': e.resultImageName || '',
+        '결과이미지 저장경로': e.resultImageDir || '',
         'ID': e.id || '',
       }))
 

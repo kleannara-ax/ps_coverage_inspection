@@ -39,6 +39,10 @@ public class JriInspection {
     @Column(name = "MATNR", length = 100)
     private String matnr;
 
+    /** 자재명 */
+    @Column(name = "MATNR_NM", length = 500)
+    private String matnrNm;
+
     /** 플랜트 */
     @Column(name = "WERKS", length = 100)
     private String werks;
@@ -167,13 +171,33 @@ public class JriInspection {
     @Column(name = "ORIGINAL_IMAGE_PATH", length = 1000)
     private String originalImagePath;
 
+    /** 원본 이미지 파일명 */
+    @Column(name = "ORIGINAL_IMAGE_NAME", length = 500)
+    private String originalImageName;
+
+    /** 원본 이미지 저장 디렉토리 */
+    @Column(name = "ORIGINAL_IMAGE_DIR", length = 1000)
+    private String originalImageDir;
+
     /** 결과 이미지 경로 */
     @Column(name = "RESULT_IMAGE_PATH", length = 1000)
     private String resultImagePath;
 
+    /** 결과 이미지 파일명 */
+    @Column(name = "RESULT_IMAGE_NAME", length = 500)
+    private String resultImageName;
+
+    /** 결과 이미지 저장 디렉토리 */
+    @Column(name = "RESULT_IMAGE_DIR", length = 1000)
+    private String resultImageDir;
+
     /** 검사자 ID */
     @Column(name = "OPERATOR_ID", length = 200)
     private String operatorId;
+
+    /** 검사자명 */
+    @Column(name = "OPERATOR_NM", length = 200)
+    private String operatorNm;
 
     /** 장비 ID */
     @Column(name = "DEVICE_ID", length = 200)

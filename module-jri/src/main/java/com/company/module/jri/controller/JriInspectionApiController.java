@@ -16,6 +16,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.Map;
 
 /**
@@ -83,15 +86,19 @@ public class JriInspectionApiController {
     }
 
     /**
-     * 검사 결과 목록 조회 (페이징)
-     * GET /jri-api/inspections?page=0&size=20
+     * 검사 결과 목록 조회 (페이징 + 필터)
+     * GET /jri-api/inspections?page=0&size=20&dateFrom=2026-03-01&dateTo=2026-03-18&indBcd=xxx
      */
     @GetMapping
     public ResponseEntity<Page<JriInspectionResponse>> listInspections(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo,
+            @RequestParam(required = false) String indBcd) {
         Pageable pageable = PageRequest.of(page, Math.min(size, 100));
-        Page<JriInspectionResponse> result = inspectionService.listInspections(pageable);
+        Page<JriInspectionResponse> result = inspectionService.searchInspections(
+                indBcd, dateFrom, dateTo, pageable);
         return ResponseEntity.ok(result);
     }
 
@@ -121,6 +128,23 @@ public class JriInspectionApiController {
         }
 
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 기존 레코드 존재 여부 확인 (Upsert 사전 체크)
+     * GET /jri-api/inspections/check-exists?matnr=xxx&lotnr=xxx&indBcd=xxx
+     */
+    @GetMapping("/check-exists")
+    public ResponseEntity<Map<String, Object>> checkExists(
+            @RequestParam(required = false) String matnr,
+            @RequestParam(required = false) String lotnr,
+            @RequestParam(required = false) String indBcd) {
+        if (matnr == null || lotnr == null || indBcd == null
+                || matnr.isBlank() || lotnr.isBlank() || indBcd.isBlank()) {
+            return ResponseEntity.ok(Map.of("exists", false));
+        }
+        boolean exists = inspectionService.existsByMatnrAndLotnrAndIndBcd(matnr, lotnr, indBcd);
+        return ResponseEntity.ok(Map.of("exists", exists));
     }
 
     /**

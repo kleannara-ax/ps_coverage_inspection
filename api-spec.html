@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MES ↔ JRI API 명세서</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif; background: #f0f4f8; padding: 30px; color: #1e293b; }
+.container { max-width: 960px; margin: 0 auto; }
+
+/* Header */
+.header { background: #fff; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); padding: 40px; margin-bottom: 24px; text-align: center; }
+.header h1 { font-size: 24px; margin-bottom: 6px; }
+.header .sub { font-size: 13px; color: #94a3b8; margin-bottom: 16px; }
+.meta-table { display: inline-grid; grid-template-columns: auto auto; gap: 4px 20px; text-align: left; font-size: 13px; }
+.meta-table .label { color: #64748b; font-weight: 600; }
+.meta-table .value { color: #334155; }
+
+/* TOC */
+.toc { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.05); padding: 24px 28px; margin-bottom: 24px; }
+.toc h2 { font-size: 15px; color: #475569; margin-bottom: 12px; }
+.toc ol { padding-left: 20px; }
+.toc li { margin-bottom: 6px; font-size: 13.5px; }
+.toc a { color: #3b82f6; text-decoration: none; font-weight: 500; }
+.toc a:hover { text-decoration: underline; }
+
+/* Section Card */
+.section { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.05); margin-bottom: 24px; overflow: hidden; }
+.section-header { padding: 18px 24px; color: #fff; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+.section-header .num { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,0.25); font-size: 15px; font-weight: 800; }
+.section-header .method-tag { font-size: 11px; background: rgba(255,255,255,0.2); padding: 3px 10px; border-radius: 4px; font-weight: 600; letter-spacing: 0.5px; font-family: monospace; }
+.s1 .section-header { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+.s2 .section-header { background: linear-gradient(90deg, #10b981, #34d399); }
+.s3 .section-header { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+.section-body { padding: 24px; }
+
+/* Sub heading */
+.sh { font-size: 13px; font-weight: 700; color: #475569; margin: 18px 0 8px 0; text-transform: uppercase; letter-spacing: 0.5px; padding-bottom: 4px; border-bottom: 1px solid #f1f5f9; }
+.sh:first-child { margin-top: 0; }
+
+/* Endpoint box */
+.endpoint { background: #1e293b; color: #e2e8f0; padding: 12px 16px; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 13.5px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+.endpoint .m { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+.endpoint .m.get { background: #3b82f6; color: #fff; }
+.endpoint .m.post { background: #10b981; color: #fff; }
+.endpoint .url { color: #fde68a; }
+
+/* Param table */
+table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 8px; }
+th { background: #f8fafc; text-align: left; padding: 8px 12px; font-weight: 600; color: #475569; border-bottom: 2px solid #e2e8f0; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.3px; }
+td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+td.param { font-family: 'Courier New', monospace; color: #2563eb; font-weight: 600; white-space: nowrap; }
+td.type { color: #7c3aed; font-family: 'Courier New', monospace; font-size: 12px; white-space: nowrap; }
+.required { display: inline-block; background: #fee2e2; color: #dc2626; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 3px; margin-left: 4px; }
+.optional { display: inline-block; background: #f1f5f9; color: #64748b; font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; margin-left: 4px; }
+
+/* Code block */
+.code { background: #1e293b; color: #e2e8f0; padding: 14px 16px; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 12.5px; line-height: 1.7; overflow-x: auto; white-space: pre; margin: 8px 0; }
+.code .k { color: #7dd3fc; }
+.code .v { color: #fde68a; }
+.code .s { color: #86efac; }
+.code .c { color: #64748b; }
+
+/* Note box */
+.note { font-size: 12px; color: #475569; padding: 10px 14px; background: #f8fafc; border-left: 3px solid #cbd5e1; border-radius: 0 6px 6px 0; margin: 10px 0; line-height: 1.6; }
+.note strong { color: #1e293b; }
+.note.warn { border-left-color: #f59e0b; background: #fffbeb; }
+.note.info { border-left-color: #3b82f6; background: #eff6ff; }
+.note.success { border-left-color: #10b981; background: #ecfdf5; }
+
+/* Trigger badge */
+.trigger { display: inline-flex; align-items: center; gap: 4px; background: #fef3c7; color: #92400e; font-size: 12px; padding: 4px 10px; border-radius: 5px; font-weight: 600; margin: 8px 0; }
+
+/* Direction */
+.direction { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 5px; margin-bottom: 12px; }
+.direction.mes-jri { background: #dbeafe; color: #1d4ed8; }
+.direction.jri-mes { background: #d1fae5; color: #047857; }
+
+/* Status codes */
+.status-table td:first-child { font-family: monospace; font-weight: 700; }
+.status-ok { color: #059669; }
+.status-err { color: #dc2626; }
+
+/* Footer */
+.footer { text-align: center; padding: 24px; font-size: 12px; color: #94a3b8; }
+
+/* Divider */
+hr.divider { border: none; border-top: 1px dashed #e2e8f0; margin: 18px 0; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  body { padding: 12px; }
+  .header { padding: 24px; }
+  .section-body { padding: 16px; }
+  table { font-size: 12px; }
+  .code { font-size: 11px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>MES ↔ JRI API 명세서</h1>
+    <p class="sub">Jumbo Roll Share Inspector — Manufacturing Execution System Integration Specification</p>
+    <div class="meta-table">
+      <span class="label">버전</span><span class="value">v1.0</span>
+      <span class="label">작성일</span><span class="value">2026-03-17</span>
+      <span class="label">시스템</span><span class="value">JRI (지분 검사 시스템)</span>
+      <span class="label">Base URL</span><span class="value">https://jri.company.com</span>
+    </div>
+  </div>
+
+  <!-- TOC -->
+  <div class="toc">
+    <h2>목차</h2>
+    <ol>
+      <li><a href="#api1">검사 실행 (MES → JRI)</a> — 브라우저 URL 호출로 검사 화면 오픈</li>
+      <li><a href="#api2">검사 결과 전송 (JRI → MES)</a> — 저장 시 자동 POST 전송</li>
+      <li><a href="#api3">검사 결과 조회 (MES → JRI)</a> — 브라우저 URL 호출로 이력 조회</li>
+    </ol>
+  </div>
+
+  <!-- API 1: 검사 실행 -->
+  <div class="section s1" id="api1">
+    <div class="section-header">
+      <span class="num">1</span> 검사 실행
+      <span class="method-tag">GET</span>
+    </div>
+    <div class="section-body">
+      <div class="direction mes-jri">MES → JRI</div>
+      <p style="font-size:13px; color:#64748b; margin-bottom:14px;">MES에서 브라우저로 아래 URL을 호출하면 JRI 검사 화면이 열리고 메타데이터가 자동 입력됩니다.</p>
+
+      <div class="sh">Endpoint</div>
+      <div class="endpoint">
+        <span class="m get">GET</span>
+        <span class="url">{JRI_BASE_URL}/?IND_BCD={값}&LOT_NO={값}&MATNR={값}&...</span>
+      </div>
+
+      <div class="sh">Request Parameters (Query String)</div>
+      <table>
+        <thead>
+          <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="param">IND_BCD <span class="required">필수</span></td><td class="type">string</td><td>개별바코드</td></tr>
+          <tr><td class="param">LOT_NO <span class="optional">선택</span></td><td class="type">string</td><td>LOT 번호</td></tr>
+          <tr><td class="param">MATNR <span class="optional">선택</span></td><td class="type">string</td><td>자재코드</td></tr>
+          <tr><td class="param">MATNR_NM <span class="optional">선택</span></td><td class="type">string</td><td>자재명 (한글·특수문자 URL 인코딩 필요)</td></tr>
+          <tr><td class="param">USERID <span class="optional">선택</span></td><td class="type">string</td><td>검사자 ID</td></tr>
+          <tr><td class="param">USERNM <span class="optional">선택</span></td><td class="type">string</td><td>검사자명 (한글 URL 인코딩 필요)</td></tr>
+        </tbody>
+      </table>
+
+      <div class="sh">Example</div>
+      <div class="code"><span class="k">GET</span> <span class="s">https://jri.company.com/</span><span class="v">?IND_BCD=26228J0039
+    &LOT_NO=6228J30035
+    &MATNR=H3SM1240-00000000
+    &MATNR_NM=KSC%20(FSC)%20240GSM%200000*0000%20%EC%A0%90%EB%B3%B4%EB%A1%A4%20(3)
+    &USERID=USER01
+    &USERNM=%ED%99%8D%EA%B8%B8%EB%8F%99</span></div>
+
+      <div class="sh">Response</div>
+      <p style="font-size:13px; color:#64748b;">브라우저에서 JRI 검사 화면(HTML)이 렌더링됩니다. API 응답이 아닌 웹 페이지입니다.</p>
+
+      <div class="note info">
+        <strong>참고:</strong> 검사 순번(차수)은 JRI가 동일 바코드 기준으로 DB에서 자동 채번합니다.<br>
+        MES에서 순번을 별도로 전달할 필요가 없습니다. (1차, 2차, 3차... 자동 증가)
+      </div>
+      <div class="note warn">
+        <strong>인코딩:</strong> 자재명(MATNR_NM), 검사자명(USERNM) 등 한글·특수문자가 포함된 값은 반드시 URL 인코딩(Percent-encoding)을 적용해야 합니다.<br>
+        예) <code>홍길동</code> → <code>%ED%99%8D%EA%B8%B8%EB%8F%99</code>
+      </div>
+    </div>
+  </div>
+
+  <!-- API 2: 결과 전송 -->
+  <div class="section s2" id="api2">
+    <div class="section-header">
+      <span class="num">2</span> 검사 결과 전송
+      <span class="method-tag">POST</span>
+    </div>
+    <div class="section-body">
+      <div class="direction jri-mes">JRI → MES</div>
+      <p style="font-size:13px; color:#64748b; margin-bottom:14px;">사용자가 JRI에서 <strong>[검사 결과 저장]</strong> 버튼을 클릭하면, DB 저장 완료 후 MES에 자동으로 결과가 전송됩니다.</p>
+      <div class="trigger">⚡ 트리거: [검사 결과 저장] 버튼 클릭 → DB 저장 성공 → 자동 MES 전송</div>
+
+      <div class="sh">Endpoint (MES가 제공해야 할 API)</div>
+      <div class="endpoint">
+        <span class="m post">POST</span>
+        <span class="url">{MES_ENDPOINT_URL}</span>
+      </div>
+
+      <div class="sh">Request Headers</div>
+      <table>
+        <thead><tr><th>Header</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td class="param">Content-Type</td><td>application/json</td></tr>
+        </tbody>
+      </table>
+
+      <div class="sh">Request Body</div>
+      <table>
+        <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="param">IND_BCD <span class="required">필수</span></td><td class="type">string</td><td>개별바코드</td></tr>
+          <tr><td class="param">ResultData <span class="required">필수</span></td><td class="type">number</td><td>커버리지 결과 값 (ppm 단위)</td></tr>
+        </tbody>
+      </table>
+
+      <div class="sh">Request Example</div>
+      <div class="code"><span class="k">POST</span> <span class="s">{MES_ENDPOINT_URL}</span>
+<span class="k">Content-Type:</span> application/json
+
+{
+  <span class="k">"IND_BCD"</span>: <span class="v">"26228J0039"</span>,
+  <span class="k">"ResultData"</span>: <span class="v">265.30</span>
+}</div>
+
+      <div class="sh">ResultData 값 설명</div>
+      <table>
+        <thead><tr><th>값 범위</th><th>단위</th><th>설명</th></tr></thead>
+        <tbody>
+          <tr><td>0 이상</td><td>ppm</td><td>커버리지 비율 × 10,000<br><code>coverageRatio = 0.0265</code> → <code>ResultData = 265.0</code></td></tr>
+          <tr><td>0</td><td>ppm</td><td>지분이 검출되지 않은 경우</td></tr>
+        </tbody>
+      </table>
+
+      <div class="sh">Expected Response (MES가 반환)</div>
+      <table>
+        <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="param">success</td><td class="type">boolean</td><td>수신 성공 여부</td></tr>
+          <tr><td class="param">message</td><td class="type">string</td><td>결과 메시지</td></tr>
+        </tbody>
+      </table>
+
+      <div class="sh">Response Example</div>
+      <div class="code"><span class="c">// 성공</span>
+{
+  <span class="k">"success"</span>: <span class="v">true</span>,
+  <span class="k">"message"</span>: <span class="s">"수신 완료"</span>
+}
+
+<span class="c">// 실패</span>
+{
+  <span class="k">"success"</span>: <span class="v">false</span>,
+  <span class="k">"message"</span>: <span class="s">"바코드를 찾을 수 없습니다."</span>
+}</div>
+
+      <div class="sh">Status Codes</div>
+      <table class="status-table">
+        <thead><tr><th>Code</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="status-ok">200 OK</td><td>전송 성공 (success: true)</td></tr>
+          <tr><td class="status-err">400 Bad Request</td><td>필수 파라미터 누락 (IND_BCD 또는 ResultData)</td></tr>
+          <tr><td class="status-err">500 Internal Server Error</td><td>MES 서버 내부 오류</td></tr>
+        </tbody>
+      </table>
+
+      <div class="note success">
+        <strong>MES 개발자 할 일:</strong> 위 규격에 맞는 POST 엔드포인트를 구현하고,<br>
+        해당 URL을 JRI 담당자에게 전달하면 <code>application.yml</code>에 등록합니다.
+        <div class="code" style="margin-top:8px; font-size:11.5px;"><span class="c"># application.yml</span>
+<span class="k">jri:</span>
+  <span class="k">mes:</span>
+    <span class="k">endpoint-url:</span> <span class="s">http://mes-server.company.com/api/inspection/result</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- API 3: 결과 조회 -->
+  <div class="section s3" id="api3">
+    <div class="section-header">
+      <span class="num">3</span> 검사 결과 조회
+      <span class="method-tag">GET</span>
+    </div>
+    <div class="section-body">
+      <div class="direction mes-jri">MES → JRI</div>
+      <p style="font-size:13px; color:#64748b; margin-bottom:14px;">MES에서 브라우저로 아래 URL을 호출하면 해당 바코드의 검사 이력 화면으로 자동 이동합니다.</p>
+
+      <div class="sh">Endpoint</div>
+      <div class="endpoint">
+        <span class="m get">GET</span>
+        <span class="url">{JRI_BASE_URL}/?tab={뷰타입}&search={개별바코드}</span>
+      </div>
+
+      <div class="sh">Request Parameters (Query String)</div>
+      <table>
+        <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td class="param">tab <span class="required">필수</span></td><td class="type">string</td><td>
+            <code>history</code> — 카드 뷰 (이미지 미리보기 포함)<br>
+            <code>history-table</code> — 테이블 뷰 (42개 전체 필드, Excel 내보내기 가능)
+          </td></tr>
+          <tr><td class="param">search <span class="required">필수</span></td><td class="type">string</td><td>검색할 개별바코드 값</td></tr>
+        </tbody>
+      </table>
+
+      <div class="sh">Example</div>
+      <div class="code"><span class="c">카드 뷰 (요약 + 이미지)</span>
+<span class="k">GET</span> <span class="s">https://jri.company.com/</span><span class="v">?tab=history&search=26228J0039</span>
+
+<span class="c">테이블 뷰 (전체 데이터 + Excel)</span>
+<span class="k">GET</span> <span class="s">https://jri.company.com/</span><span class="v">?tab=history-table&search=26228J0039</span></div>
+
+      <div class="sh">Response</div>
+      <p style="font-size:13px; color:#64748b;">브라우저에서 검사 이력 화면(HTML)이 렌더링됩니다. API 응답이 아닌 웹 페이지입니다.</p>
+
+      <div class="sh">뷰 타입별 표시 내용</div>
+      <table>
+        <thead><tr><th>tab 값</th><th>뷰 이름</th><th>표시 내용</th></tr></thead>
+        <tbody>
+          <tr><td class="param">history</td><td>카드 뷰</td><td>바코드, LOT, 자재코드, 커버리지 요약 카드 + 원본/결과 이미지 미리보기</td></tr>
+          <tr><td class="param">history-table</td><td>테이블 뷰</td><td>42개 전체 필드 테이블 + Excel 내보내기 버튼 + 삭제 기능</td></tr>
+        </tbody>
+      </table>
+
+      <div class="note info">
+        <strong>조회 결과:</strong> 해당 개별바코드의 검사 이력만 필터링되어 표시됩니다.<br>
+        동일 바코드로 여러 번 검사한 경우 1차, 2차, 3차... 모두 조회됩니다.
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    MES ↔ JRI API 명세서 v1.0 &nbsp;|&nbsp; 2026-03-17 &nbsp;|&nbsp; Jumbo Roll Share Inspector
+  </div>
+</div>
+</body>
+</html>
