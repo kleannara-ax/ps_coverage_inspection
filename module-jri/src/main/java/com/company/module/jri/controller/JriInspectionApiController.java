@@ -133,6 +133,9 @@ public class JriInspectionApiController {
     /**
      * 기존 레코드 존재 여부 확인 (Upsert 사전 체크)
      * GET /jri-api/inspections/check-exists?matnr=xxx&lotnr=xxx&indBcd=xxx
+     *
+     * <p>존재 시 record 객체(id, seq, indBcdSeq, inspectedAt, coverageRatio, totalCount)를 함께 반환하여
+     * 프론트엔드의 재검사 확인 팝업에서 현재 차수를 표시할 수 있도록 합니다.</p>
      */
     @GetMapping("/check-exists")
     public ResponseEntity<Map<String, Object>> checkExists(
@@ -143,8 +146,8 @@ public class JriInspectionApiController {
                 || matnr.isBlank() || lotnr.isBlank() || indBcd.isBlank()) {
             return ResponseEntity.ok(Map.of("exists", false));
         }
-        boolean exists = inspectionService.existsByMatnrAndLotnrAndIndBcd(matnr, lotnr, indBcd);
-        return ResponseEntity.ok(Map.of("exists", exists));
+        return ResponseEntity.ok(
+                inspectionService.checkExistsByMatnrAndLotnrAndIndBcd(matnr, lotnr, indBcd));
     }
 
     /**

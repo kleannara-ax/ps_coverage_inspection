@@ -24,3 +24,4 @@ logs/
 
 # Node
 node_modules/
+preview/uploads/

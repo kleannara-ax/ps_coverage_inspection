@@ -10,9 +10,9 @@
 # ─── 아래 내용을 core 의 application.yml 에 병합하세요 ───
 
 # JRI 모듈 설정
-# jri:
-#   upload:
-#     dir: ./uploads/jri          # 이미지 저장 경로
+jri:
+  upload:
+    dir: /data/upload/ps_cov_ins   # 이미지 저장 경로
 
 # spring.jpa.hibernate.ddl-auto 가 none 또는 validate 이면
 # DB 마이그레이션 SQL을 먼저 실행해야 합니다:
