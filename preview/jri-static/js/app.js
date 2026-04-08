@@ -127,6 +127,29 @@ document.addEventListener('DOMContentLoaded', () => {
     return
   }
 
+  /* ──────────── URL 파라미터 → 입력 필드 자동 채우기 ──────────── */
+  // 호출 URL 예: ?IND_BCD=26228J0039&LOT_NO=6228J30035&MATNR=H3SM1240&MATNR_NM=PS필름1240&USERID=inspector01&USERNM=김철수
+  {
+    const params = new URLSearchParams(window.location.search)
+    const mapping = [
+      ['IND_BCD',  elements.indBcdInput],
+      ['LOT_NO',   elements.lotnrInput],
+      ['MATNR',    elements.matnrInput],
+      ['MATNR_NM', elements.matnrNmInput],
+      ['USERID',   elements.operatorIdInput],
+      ['USERNM',   elements.operatorNmInput],
+      ['PRC_SEQNO', elements.prcSeqnoInput],
+    ]
+    mapping.forEach(([key, el]) => {
+      const val = params.get(key)
+      if (val && el) el.value = val
+    })
+    // URL 파라미터로 수신된 값이 있으면 콘솔에 로그
+    if (params.toString()) {
+      console.log('[JRI] URL 파라미터 수신:', Object.fromEntries(params.entries()))
+    }
+  }
+
   const originalCtx = elements.originalCanvas?.getContext('2d') || null
   const binaryCtx = elements.binaryCanvas.getContext('2d', { willReadFrequently: true })
   const markerCtx = elements.markerCanvas.getContext('2d')
@@ -164,6 +187,97 @@ document.addEventListener('DOMContentLoaded', () => {
     inspectionStartedAt: null, msrmDate: null,
     currentMetrics: getEmptyMetrics(),
     processingMaxDimension: MAX_DISPLAY_DIMENSION, resizedForPerformance: false,
+    secretMode: false,
+  }
+
+  /* ──────────── Secret Mode (로고 3회 클릭 → 테스트 모드) ──────────── */
+  ;(function initSecretMode() {
+    const logo = document.getElementById('headerLogo')
+    if (!logo) return
+
+    let clickCount = 0
+    let clickTimer = null
+    const CLICK_THRESHOLD = 5
+    const CLICK_TIMEOUT = 1500 // 1.5초 이내 5회 클릭
+
+    logo.addEventListener('click', () => {
+      clickCount++
+      if (clickTimer) clearTimeout(clickTimer)
+      clickTimer = setTimeout(() => { clickCount = 0 }, CLICK_TIMEOUT)
+
+      if (clickCount >= CLICK_THRESHOLD) {
+        clickCount = 0
+        if (clickTimer) clearTimeout(clickTimer)
+        toggleSecretMode()
+      }
+    })
+  })()
+
+  function toggleSecretMode() {
+    state.secretMode = !state.secretMode
+    applySecretModeUI()
+    console.log(`[JRI] Secret Mode: ${state.secretMode ? 'ON' : 'OFF'}`)
+  }
+
+  function applySecretModeUI() {
+    const isSecret = state.secretMode
+    const banner = document.getElementById('secretModeBanner')
+
+    // 배너 표시/숨김
+    if (banner) {
+      banner.classList.toggle('hidden', !isSecret)
+      if (isSecret) banner.classList.add('mt-4')
+      else banner.classList.remove('mt-4')
+    }
+
+    // 검사 메타데이터 카드 숨김 (바코드/LOT/자재/검사자 입력 영역)
+    const metadataCards = document.querySelectorAll('#tab-processing .grid.gap-6 > .space-y-6:first-child > .rounded-2xl')
+    metadataCards.forEach((card, idx) => {
+      // idx 0 = 이미지 준비 (유지), idx 1 = 검사 메타데이터 (숨김)
+      if (idx === 1) card.classList.toggle('hidden', isSecret)
+    })
+
+    // 저장 버튼 숨김
+    if (elements.saveButton) {
+      elements.saveButton.classList.toggle('hidden', isSecret)
+    }
+    // 저장 안내 메시지 변경
+    if (elements.saveMessage) {
+      if (isSecret) {
+        elements.saveMessage.textContent = '테스트 모드: 결과 저장 및 MES 연동이 비활성화되어 있습니다.'
+        elements.saveMessage.className = 'mt-2 text-xs font-semibold text-amber-600'
+      } else {
+        elements.saveMessage.textContent = '분석 후 저장 버튼을 눌러 DB에 이력을 남길 수 있습니다.'
+        elements.saveMessage.className = 'mt-2 text-xs text-slate-400'
+      }
+    }
+
+    // 이력 탭 숨김 (검사 이력 + 이력 테이블)
+    const tabButtons = document.querySelectorAll('.tab-trigger')
+    tabButtons.forEach(btn => {
+      const target = btn.getAttribute('data-tab-target')
+      if (target === 'history' || target === 'history-table') {
+        btn.classList.toggle('hidden', isSecret)
+      }
+    })
+
+    // 시크릿 모드 진입 시 검사 도구 탭으로 강제 전환
+    if (isSecret) {
+      const processingTab = document.querySelector('.tab-trigger[data-tab-target="processing"]')
+      if (processingTab) processingTab.click()
+    }
+
+    // 헤더 로고 색상 변경 (on/off 시각적 피드백)
+    const logo = document.getElementById('headerLogo')
+    if (logo) {
+      if (isSecret) {
+        logo.classList.remove('text-indigo-600')
+        logo.classList.add('text-amber-600')
+      } else {
+        logo.classList.remove('text-amber-600')
+        logo.classList.add('text-indigo-600')
+      }
+    }
   }
 
   elements.thresholdSlider.value = String(DEFAULT_THRESHOLD)
@@ -715,8 +829,84 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  /* ──────────── 필수 필드 검증 (저장 전) ──────────── */
+  const REQUIRED_FIELDS = [
+    { el: () => elements.indBcdInput,    label: '개별 바코드(IND_BCD)' },
+    { el: () => elements.lotnrInput,     label: 'LOT 번호(LOT_NO)' },
+    { el: () => elements.matnrInput,     label: '자재코드(MATNR)' },
+    { el: () => elements.operatorIdInput, label: '검사자 ID(USERID)' },
+  ]
+
+  const REQUIRED_BORDER_ERROR = 'border-rose-400 ring-2 ring-rose-200'
+  const REQUIRED_BORDER_NORMAL_WHITE = 'border-slate-300'
+  const REQUIRED_BORDER_NORMAL_GRAY  = 'border-slate-300'
+
+  /**
+   * 필수 필드 검증
+   * @returns {{ valid: boolean, missing: string[] }}
+   */
+  function validateRequiredFields() {
+    const missing = []
+    REQUIRED_FIELDS.forEach(({ el, label }) => {
+      const input = el()
+      if (!input) return
+      const value = (input.value || '').trim()
+      if (!value) {
+        missing.push(label)
+        // 빨간 테두리 표시
+        REQUIRED_BORDER_ERROR.split(' ').forEach(c => input.classList.add(c))
+        input.classList.remove(REQUIRED_BORDER_NORMAL_WHITE)
+      } else {
+        // 정상 테두리 복원
+        REQUIRED_BORDER_ERROR.split(' ').forEach(c => input.classList.remove(c))
+        if (!input.classList.contains(REQUIRED_BORDER_NORMAL_WHITE)) {
+          input.classList.add(REQUIRED_BORDER_NORMAL_WHITE)
+        }
+      }
+    })
+    return { valid: missing.length === 0, missing }
+  }
+
+  /**
+   * 필수 필드 에러 테두리 초기화 (포커스/입력 시 복원)
+   */
+  function clearRequiredFieldError(input) {
+    if (!input) return
+    REQUIRED_BORDER_ERROR.split(' ').forEach(c => input.classList.remove(c))
+    if (!input.classList.contains(REQUIRED_BORDER_NORMAL_WHITE)) {
+      input.classList.add(REQUIRED_BORDER_NORMAL_WHITE)
+    }
+  }
+
+  // 필수 필드에 포커스/입력 시 빨간 테두리 자동 해제
+  REQUIRED_FIELDS.forEach(({ el }) => {
+    const input = el()
+    if (!input) return
+    input.addEventListener('input', () => clearRequiredFieldError(input))
+    input.addEventListener('focus', () => clearRequiredFieldError(input))
+  })
+
   async function handleSaveResult() {
+    // 시크릿 모드에서는 저장 차단
+    if (state.secretMode) {
+      setSaveMessage('테스트 모드에서는 검사 결과를 저장할 수 없습니다.', 'error')
+      return
+    }
     if (!state.components.length) return
+
+    // ── 필수 필드 검증 ──
+    const { valid, missing } = validateRequiredFields()
+    if (!valid) {
+      setSaveMessage(`필수 항목을 입력해주세요: ${missing.join(', ')}`, 'error')
+      // 첫 미입력 필드로 포커스 이동
+      const firstMissing = REQUIRED_FIELDS.find(({ el }) => {
+        const input = el()
+        return input && !(input.value || '').trim()
+      })
+      if (firstMissing) firstMissing.el()?.focus()
+      return
+    }
+
     const saveStart = performance.now()
     try {
       setProcessingOverlay(true, '검사 결과 저장', '이미지를 압축하는 중…')
@@ -735,8 +925,12 @@ document.addEventListener('DOMContentLoaded', () => {
           const checkRes = await axios.get(checkUrl)
           if (checkRes.data.exists) {
             setProcessingOverlay(false)
+            const existingRecord = checkRes.data.record || {}
+            const currentSeq = existingRecord.indBcdSeq || '1'
+            const nextSeq = Number(currentSeq) + 1
             const confirmed = window.confirm(
               '기존에 존재하던 검사 결과를 변경하시겠습니까?\n\n' +
+              `현재 차수: ${currentSeq}차 → 변경 후: ${nextSeq}차\n\n` +
               '예를 누르면, 기존 검사 결과는 사라지고 새 데이터로 업데이트 됩니다.'
             )
             if (!confirmed) {
@@ -827,6 +1021,9 @@ document.addEventListener('DOMContentLoaded', () => {
    * @param {object} metrics - 현재 검사 지표
    */
   async function sendResultToMes(saved, metrics, isUpdate = false) {
+    // 시크릿 모드에서는 MES 전송 차단
+    if (state.secretMode) return
+
     const indBcd = saved.indBcd
     if (!indBcd) {
       console.warn('[MES] 개별바코드(IND_BCD)가 없어 MES 전송을 건너뜁니다.')
@@ -876,16 +1073,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  /**
+   * 현재 활성 탭이 '이력 테이블(history-table)'인지 판별
+   */
+  function isHistoryTableTabActive() {
+    const panel = document.getElementById('tab-history-table')
+    return panel && !panel.classList.contains('hidden')
+  }
+
   /* ──────────── REST API - Load History ──────────── */
   async function loadHistoryFromServer(page) {
     try {
       currentHistoryPage = page
-      // 검사 이력 탭 검색 (기존 호환)
-      const keyword = elements.historySearchInput ? elements.historySearchInput.value.trim() : ''
-      // 이력 테이블 탭 필터
-      const dateFrom = elements.tableFilterDateFrom ? elements.tableFilterDateFrom.value : ''
-      const dateTo = elements.tableFilterDateTo ? elements.tableFilterDateTo.value : ''
-      const indBcd = elements.tableFilterIndBcd ? elements.tableFilterIndBcd.value.trim() : ''
+
+      // 현재 활성 탭에 따라 검색 필드를 분리하여 읽음
+      // → 카드탭 검색창 값이 테이블탭 조회에 간섭하는 버그 방지
+      const isTableTab = isHistoryTableTabActive()
+
+      // 카드탭 키워드: 테이블탭이 활성일 때는 무시
+      const keyword = (!isTableTab && elements.historySearchInput)
+        ? elements.historySearchInput.value.trim() : ''
+
+      // 테이블탭 필터: 카드탭이 활성일 때는 무시
+      const dateFrom = (isTableTab && elements.tableFilterDateFrom) ? elements.tableFilterDateFrom.value : ''
+      const dateTo = (isTableTab && elements.tableFilterDateTo) ? elements.tableFilterDateTo.value : ''
+      const indBcd = (isTableTab && elements.tableFilterIndBcd) ? elements.tableFilterIndBcd.value.trim() : ''
 
       let url
       if (keyword) {

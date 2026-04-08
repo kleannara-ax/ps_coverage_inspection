@@ -44,6 +44,13 @@ public class JriWebConfig implements WebMvcConfigurer {
         registry.addResourceHandler("/jri-static/**")
                 .addResourceLocations("classpath:/static/jri/")
                 .setCachePeriod(3600);
+
+        // 업로드된 검사 이미지 정적 서빙
+        // URL: /uploads/original/2026.04/xxx.jpg  →  file:/data/upload/ps_cov_ins/original/2026.04/xxx.jpg
+        // URL: /uploads/result/2026.04/xxx.jpg    →  file:/data/upload/ps_cov_ins/result/2026.04/xxx.jpg
+        registry.addResourceHandler("/uploads/**")
+                .addResourceLocations("file:/data/upload/ps_cov_ins/")
+                .setCachePeriod(3600);
     }
 
     /**

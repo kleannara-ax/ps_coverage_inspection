@@ -24,6 +24,10 @@ public class JriInspectionSaveRequest {
     @Size(max = 100)
     private String matnr;
 
+    /** 자재명(품명) */
+    @Size(max = 500)
+    private String matnrNm;
+
     /** 플랜트 */
     @Size(max = 100)
     private String werks;
@@ -128,6 +132,10 @@ public class JriInspectionSaveRequest {
     /** 검사자 ID */
     @Size(max = 200)
     private String operatorId;
+
+    /** 검사자명 */
+    @Size(max = 200)
+    private String operatorNm;
 
     /** 장비 ID */
     @Size(max = 200)

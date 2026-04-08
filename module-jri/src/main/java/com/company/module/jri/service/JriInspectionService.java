@@ -20,6 +20,8 @@ import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 
 /**
@@ -36,7 +38,7 @@ public class JriInspectionService {
 
     private final JriInspectionRepository inspectionRepository;
 
-    @Value("${jri.upload.dir:./uploads/jri}")
+    @Value("${jri.upload.dir:/data/upload/ps_cov_ins}")
     private String uploadDir;
 
     /**
@@ -54,6 +56,8 @@ public class JriInspectionService {
                 request.getIndBcd(), request.getLotnr(), request.getMatnr(), request.getTotalCount());
 
         // 이미지 저장 준비
+        String matnrSafe = request.getMatnr() != null
+                ? request.getMatnr().replaceAll("[^a-zA-Z0-9_-]", "_") : "unknown";
         String indBcdSafe = request.getIndBcd() != null
                 ? request.getIndBcd().replaceAll("[^a-zA-Z0-9_-]", "_") : "unknown";
 
@@ -74,12 +78,14 @@ public class JriInspectionService {
             isUpdate = true;
             log.info("[JRI] 동일 조합 기존 레코드 발견 → UPDATE (id: {}, seq: {})", inspection.getId(), inspection.getSeq());
 
-            // 이미지 저장 (기존 ID 사용)
-            String originalImagePath = saveUploadedImage(originalImage, "original", inspection.getId(), indBcdSafe);
-            String resultImagePath = saveUploadedImage(resultImage, "result", inspection.getId(), indBcdSafe);
+            // 이미지 저장 (기존 ID 사용) — 년월 서브폴더 자동 생성
+            String originalImagePath = saveUploadedImage(originalImage, "original", inspection.getId(), matnrSafe, indBcdSafe);
+            String resultImagePath = saveUploadedImage(resultImage, "result", inspection.getId(), matnrSafe, indBcdSafe);
             String originalImageName = originalImagePath != null ? originalImagePath.substring(originalImagePath.lastIndexOf('/') + 1) : null;
             String resultImageName = resultImagePath != null ? resultImagePath.substring(resultImagePath.lastIndexOf('/') + 1) : null;
-            String imageDir = originalImagePath != null || resultImagePath != null ? uploadDir : null;
+            String yearMonth = YearMonth.now().format(DateTimeFormatter.ofPattern("yyyy.MM"));
+            String originalImageDir = originalImagePath != null ? uploadDir + "/original/" + yearMonth : null;
+            String resultImageDir = resultImagePath != null ? uploadDir + "/result/" + yearMonth : null;
             if (originalImagePath == null) originalImagePath = request.getOriginalImagePath();
             if (resultImagePath == null) resultImagePath = request.getResultImagePath();
 
@@ -112,15 +118,20 @@ public class JriInspectionService {
             inspection.setManualRemovedCount(request.getManualRemovedCount() != null ? request.getManualRemovedCount() : 0);
             inspection.setOriginalImagePath(originalImagePath);
             inspection.setOriginalImageName(originalImageName != null ? originalImageName : inspection.getOriginalImageName());
-            inspection.setOriginalImageDir(imageDir != null ? imageDir : inspection.getOriginalImageDir());
+            inspection.setOriginalImageDir(originalImageDir != null ? originalImageDir : inspection.getOriginalImageDir());
             inspection.setResultImagePath(resultImagePath);
             inspection.setResultImageName(resultImageName != null ? resultImageName : inspection.getResultImageName());
-            inspection.setResultImageDir(imageDir != null ? imageDir : inspection.getResultImageDir());
+            inspection.setResultImageDir(resultImageDir != null ? resultImageDir : inspection.getResultImageDir());
             inspection.setOperatorId(request.getOperatorId());
             inspection.setDeviceId(request.getDeviceId());
             inspection.setStatus(request.getStatus());
             if (request.getMatnrNm() != null) inspection.setMatnrNm(request.getMatnrNm());
             if (request.getOperatorNm() != null) inspection.setOperatorNm(request.getOperatorNm());
+
+            // 차수(indBcdSeq) 증가: 동일 자재+LOT+바코드 재검사 시 +1
+            int currentSeq = 1;
+            try { currentSeq = Integer.parseInt(inspection.getIndBcdSeq()); } catch (Exception ignored) {}
+            inspection.setIndBcdSeq(String.valueOf(currentSeq + 1));
 
         } else {
             // ── INSERT: 신규 레코드 생성 ──
@@ -139,11 +150,13 @@ public class JriInspectionService {
 
             LocalDateTime msrmDate = request.getMsrmDate() != null ? request.getMsrmDate() : LocalDateTime.now();
 
-            String originalImagePath = saveUploadedImage(originalImage, "original", id, indBcdSafe);
-            String resultImagePath = saveUploadedImage(resultImage, "result", id, indBcdSafe);
+            String originalImagePath = saveUploadedImage(originalImage, "original", id, matnrSafe, indBcdSafe);
+            String resultImagePath = saveUploadedImage(resultImage, "result", id, matnrSafe, indBcdSafe);
             String originalImageName = originalImagePath != null ? originalImagePath.substring(originalImagePath.lastIndexOf('/') + 1) : null;
             String resultImageName = resultImagePath != null ? resultImagePath.substring(resultImagePath.lastIndexOf('/') + 1) : null;
-            String imageDir = originalImagePath != null || resultImagePath != null ? uploadDir : null;
+            String yearMonthNow = YearMonth.now().format(DateTimeFormatter.ofPattern("yyyy.MM"));
+            String origImageDir = originalImagePath != null ? uploadDir + "/original/" + yearMonthNow : null;
+            String resImageDir = resultImagePath != null ? uploadDir + "/result/" + yearMonthNow : null;
             if (originalImagePath == null) originalImagePath = request.getOriginalImagePath();
             if (resultImagePath == null) resultImagePath = request.getResultImagePath();
 
@@ -186,10 +199,10 @@ public class JriInspectionService {
                     .manualRemovedCount(request.getManualRemovedCount() != null ? request.getManualRemovedCount() : 0)
                     .originalImagePath(originalImagePath)
                     .originalImageName(originalImageName)
-                    .originalImageDir(imageDir)
+                    .originalImageDir(origImageDir)
                     .resultImagePath(resultImagePath)
                     .resultImageName(resultImageName)
-                    .resultImageDir(imageDir)
+                    .resultImageDir(resImageDir)
                     .operatorId(request.getOperatorId())
                     .operatorNm(request.getOperatorNm())
                     .deviceId(request.getDeviceId())
@@ -210,25 +223,60 @@ public class JriInspectionService {
     }
 
     /**
-     * MultipartFile → 디스크 저장
-     * @return 저장된 파일의 상대 경로 (null if no file)
+     * 년월(YYYY.MM) 서브디렉토리를 포함한 이미지 저장 경로 생성
+     * 예: /data/upload/ps_cov_ins/original/2026.04/
+     * 예: /data/upload/ps_cov_ins/result/2026.04/
+     *
+     * @param category "original" 또는 "result"
+     * @return { dirPath: 실제 파일시스템 경로, subDir: URL용 서브 경로 }
      */
-    private String saveUploadedImage(MultipartFile file, String prefix, String inspectionId, String indBcdSafe) {
+    private Path getImageSubDir(String category) {
+        String yearMonth = YearMonth.now().format(DateTimeFormatter.ofPattern("yyyy.MM"));
+        Path dir = Paths.get(uploadDir, category, yearMonth);
+        try {
+            if (!Files.exists(dir)) Files.createDirectories(dir);
+        } catch (IOException e) {
+            log.error("[JRI] 이미지 디렉토리 생성 실패 - dir: {}", dir, e);
+        }
+        return dir;
+    }
+
+    /**
+     * MultipartFile → 디스크 저장 (년월 서브폴더 자동 생성)
+     *
+     * <p>저장 경로 예시:
+     * <ul>
+     *   <li>원본: /data/upload/ps_cov_ins/original/2026.04/original_{matnr}_{barcode}_{timestamp}_{uuid}.jpg</li>
+     *   <li>결과: /data/upload/ps_cov_ins/result/2026.04/result_{matnr}_{barcode}_{timestamp}_{uuid}.jpg</li>
+     * </ul>
+     *
+     * @param file          업로드된 MultipartFile
+     * @param prefix        "original" 또는 "result"
+     * @param inspectionId  검사 ID (파일명 고유성 확보)
+     * @param matnrSafe     안전한 자재코드 문자열
+     * @param indBcdSafe    안전한 바코드 문자열
+     * @return 저장된 파일의 URL 경로 (예: /uploads/original/2026.04/original_xxx.jpg), null if no file
+     */
+    private String saveUploadedImage(MultipartFile file, String prefix, String inspectionId, String matnrSafe, String indBcdSafe) {
         if (file == null || file.isEmpty()) return null;
         try {
-            Path dir = Paths.get(uploadDir);
-            if (!Files.exists(dir)) Files.createDirectories(dir);
+            String category = "result".equals(prefix) ? "result" : "original";
+            Path dir = getImageSubDir(category);
 
             String originalName = file.getOriginalFilename();
             String ext = "jpg";
             if (originalName != null && originalName.contains(".")) {
                 ext = originalName.substring(originalName.lastIndexOf('.') + 1);
             }
-            String filename = String.format("%s_%s_%s_%s.%s", prefix, indBcdSafe,
-                    System.currentTimeMillis(), inspectionId.substring(0, 8), ext);
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyMMdd_HHmmss"));
+            String filename = String.format("%s_%s_%s_%s_%s.%s", prefix, matnrSafe, indBcdSafe,
+                    timestamp, inspectionId.substring(0, 8), ext);
             Path filePath = dir.resolve(filename);
             file.transferTo(filePath.toFile());
-            return "/uploads/jri/" + filename;
+
+            // URL 경로: /uploads/{category}/{YYYY.MM}/{filename}
+            String yearMonth = YearMonth.now().format(DateTimeFormatter.ofPattern("yyyy.MM"));
+            return String.format("/uploads/%s/%s/%s", category, yearMonth, filename);
         } catch (IOException e) {
             log.error("[JRI] 이미지 저장 실패 - prefix: {}", prefix, e);
             return null;
@@ -295,6 +343,26 @@ public class JriInspectionService {
      */
     public boolean existsByMatnrAndLotnrAndIndBcd(String matnr, String lotnr, String indBcd) {
         return inspectionRepository.findByMatnrAndLotnrAndIndBcd(matnr, lotnr, indBcd).isPresent();
+    }
+
+    /**
+     * 동일 자재+LOT+바코드 조합 존재 여부 + 기존 레코드 요약 정보 반환
+     * (프론트엔드 재검사 확인 팝업에서 현재 차수 표시용)
+     */
+    public java.util.Map<String, Object> checkExistsByMatnrAndLotnrAndIndBcd(String matnr, String lotnr, String indBcd) {
+        return inspectionRepository.findByMatnrAndLotnrAndIndBcd(matnr, lotnr, indBcd)
+                .map(entity -> java.util.Map.<String, Object>of(
+                        "exists", true,
+                        "record", java.util.Map.of(
+                                "id", entity.getId(),
+                                "seq", entity.getSeq(),
+                                "indBcdSeq", entity.getIndBcdSeq() != null ? entity.getIndBcdSeq() : "1",
+                                "inspectedAt", entity.getInspectedAt() != null ? entity.getInspectedAt().toString() : "",
+                                "coverageRatio", entity.getCoverageRatio() != null ? entity.getCoverageRatio() : java.math.BigDecimal.ZERO,
+                                "totalCount", entity.getTotalCount() != null ? entity.getTotalCount() : 0
+                        )
+                ))
+                .orElse(java.util.Map.of("exists", false));
     }
 
     /**
