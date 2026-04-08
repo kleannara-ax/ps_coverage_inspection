@@ -1,10 +1,9 @@
 # ============================================================
 # module-jri 모듈 설정
-# company-platform 통합 시 application.yml에 추가할 내용
+# company-platform 통합 시 application.yml에 아래 설정을 병합하세요.
 #
-# 주의: 이 파일은 참조용입니다.
-# 실제로는 core 모듈의 application.yml에 설정이 통합됩니다.
 # JPA Entity Scan 범위에 com.company.module.jri 가 포함되어야 합니다.
+# DB 스키마: sql/module-jri/01_schema.sql 실행 필요
 # ============================================================
 
 # ─── 아래 내용을 core 의 application.yml 에 병합하세요 ───
@@ -13,10 +12,8 @@
 jri:
   upload:
     dir: /data/upload/ps_cov_ins   # 이미지 저장 경로
-
-# spring.jpa.hibernate.ddl-auto 가 none 또는 validate 이면
-# DB 마이그레이션 SQL을 먼저 실행해야 합니다:
-# src/main/resources/db/migration/V1__mod_jri_init_schema.sql
+  mes:
+    endpoint-url:                   # MES 전송 URL (비어있으면 mock 모드)
 
 # 로깅 설정 (core application.yml에 추가)
 # logging:

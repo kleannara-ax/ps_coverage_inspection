@@ -1,5 +1,6 @@
 package com.company.module.jri.dto;
 
+import com.company.module.jri.entity.JriInspection;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -9,13 +10,11 @@ import java.time.LocalDateTime;
  * 점보롤 지분 검사 결과 응답 DTO
  */
 @Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
 @Builder
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class JriInspectionResponse {
 
-    private String id;
+    private Long inspectionId;
     private Integer seq;
     private String inspItemGrpCd;
     private String matnr;
@@ -39,19 +38,14 @@ public class JriInspectionResponse {
     private Integer autoCount;
     private Integer manualCount;
     private Integer removedAutoCount;
-
-    // 크기별 버킷
     private Integer bucketUpTo3;
     private Integer bucketUpTo5;
     private Integer bucketUpTo7;
     private Integer bucketOver7;
-
-    // 공간 분포
     private Integer quadrantTopLeft;
     private Integer quadrantTopRight;
     private Integer quadrantBottomLeft;
     private Integer quadrantBottomRight;
-
     private Long objectPixelCount;
     private Long totalPixels;
     private Integer manualAddedCount;
@@ -66,7 +60,63 @@ public class JriInspectionResponse {
     private String operatorNm;
     private String deviceId;
     private String status;
+    private LocalDateTime createdAt;
 
-    /** INSERT / UPDATE 구분 (true = 기존 레코드 갱신) */
+    /** INSERT / UPDATE 구분 */
     private Boolean isUpdate;
+
+    /**
+     * Entity → Response DTO 변환 (static 팩토리 메서드)
+     */
+    public static JriInspectionResponse from(JriInspection entity) {
+        return JriInspectionResponse.builder()
+                .inspectionId(entity.getInspectionId())
+                .seq(entity.getSeq())
+                .inspItemGrpCd(entity.getInspItemGrpCd())
+                .matnr(entity.getMatnr())
+                .matnrNm(entity.getMatnrNm())
+                .werks(entity.getWerks())
+                .msrmDate(entity.getMsrmDate())
+                .prcSeqno(entity.getPrcSeqno())
+                .lotnr(entity.getLotnr())
+                .indBcd(entity.getIndBcd())
+                .indBcdSeq(entity.getIndBcdSeq())
+                .inspectedAt(entity.getInspectedAt())
+                .thresholdMax(entity.getThresholdMax())
+                .totalCount(entity.getTotalCount())
+                .coverageRatio(entity.getCoverageRatio())
+                .densityCount(entity.getDensityCount())
+                .densityRatio(entity.getDensityRatio())
+                .sizeUniformityScore(entity.getSizeUniformityScore())
+                .distributionUniformityScore(entity.getDistributionUniformityScore())
+                .meanSize(entity.getMeanSize())
+                .stdSize(entity.getStdSize())
+                .autoCount(entity.getAutoCount())
+                .manualCount(entity.getManualCount())
+                .removedAutoCount(entity.getRemovedAutoCount())
+                .bucketUpTo3(entity.getBucketUpTo3())
+                .bucketUpTo5(entity.getBucketUpTo5())
+                .bucketUpTo7(entity.getBucketUpTo7())
+                .bucketOver7(entity.getBucketOver7())
+                .quadrantTopLeft(entity.getQuadrantTopLeft())
+                .quadrantTopRight(entity.getQuadrantTopRight())
+                .quadrantBottomLeft(entity.getQuadrantBottomLeft())
+                .quadrantBottomRight(entity.getQuadrantBottomRight())
+                .objectPixelCount(entity.getObjectPixelCount())
+                .totalPixels(entity.getTotalPixels())
+                .manualAddedCount(entity.getManualAddedCount())
+                .manualRemovedCount(entity.getManualRemovedCount())
+                .originalImagePath(entity.getOriginalImagePath())
+                .originalImageName(entity.getOriginalImageName())
+                .originalImageDir(entity.getOriginalImageDir())
+                .resultImagePath(entity.getResultImagePath())
+                .resultImageName(entity.getResultImageName())
+                .resultImageDir(entity.getResultImageDir())
+                .operatorId(entity.getOperatorId())
+                .operatorNm(entity.getOperatorNm())
+                .deviceId(entity.getDeviceId())
+                .status(entity.getStatus())
+                .createdAt(entity.getCreatedAt())
+                .build();
+    }
 }

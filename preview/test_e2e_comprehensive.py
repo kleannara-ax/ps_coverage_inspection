@@ -37,12 +37,18 @@ def assert_eq(label, expected, actual):
 def assert_true(label, condition):
     assert_eq(label, True, bool(condition))
 
+def unwrap_api_response(raw):
+    """ApiResponse { success, data, ... } 래핑 해제"""
+    if isinstance(raw, dict) and 'success' in raw and 'data' in raw:
+        return raw['data']
+    return raw
+
 def api_post(data):
     body = json.dumps(data).encode()
     req = urllib.request.Request(API_URL, data=body, method="POST",
                                 headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req) as r:
-        return json.loads(r.read())
+        return unwrap_api_response(json.loads(r.read()))
 
 def api_delete_all():
     req = urllib.request.Request(API_URL, method="DELETE")
@@ -50,7 +56,7 @@ def api_delete_all():
 
 def api_list(page=0, size=20):
     with urllib.request.urlopen(f"{API_URL}?page={page}&size={size}") as r:
-        return json.loads(r.read())
+        return unwrap_api_response(json.loads(r.read()))
 
 def run_playwright(script, timeout=30):
     """Playwright JavaScript를 node로 실행 (파일 기반)"""
