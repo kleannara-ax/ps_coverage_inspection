@@ -1,17 +1,14 @@
-// ============================================================
-// module-jri : 점보롤 지분 검사 (Jumbo Roll Share Inspector)
+// module-jri: PS 커버리지 검사 (점보롤 지분 검사) 모듈
 // 패키지: com.company.module.jri
 // URL Prefix: /jri-api/**
-// DB Table Prefix: MOD_JRI_
-// ============================================================
-
+// DB Table: jri_inspection (소문자 snake_case)
 dependencies {
-    // Core 모듈 의존 (보안, 예외처리, 로깅 등 공통 기능)
-    implementation project(':core')
+    // core 공통 클래스 참조 (컴파일 전용: 순환 의존 방지)
+    compileOnly project(':core')
 
-    // Spring Boot Starters
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
 
@@ -28,6 +25,7 @@ dependencies {
     testRuntimeOnly 'com.h2database:h2'
 }
 
-tasks.named('test') {
-    useJUnitPlatform()
+// spring-boot 플러그인 미적용 서브모듈: plain jar만 생성
+jar {
+    enabled = true
 }

@@ -15,6 +15,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const API_BASE = CONTEXT_PATH + '/jri-api/inspections'
   const MES_API_BASE = CONTEXT_PATH + '/jri-api/mes/send-result'
 
+  /**
+   * ApiResponse 래핑 해제 헬퍼
+   * Spring Boot ApiResponse: { success, data, message, timestamp }
+   * 하위 호환: data 필드가 없으면 원본 반환
+   */
+  function unwrapApiResponse(responseData) {
+    if (responseData && typeof responseData === 'object' && 'data' in responseData && 'success' in responseData) {
+      return responseData.data
+    }
+    return responseData
+  }
+
   /* ──────────── Constants ──────────── */
   const DEFAULT_THRESHOLD = 115
   const MAX_DISPLAY_DIMENSION = 3200
@@ -923,9 +935,10 @@ document.addEventListener('DOMContentLoaded', () => {
           updateProcessingMessage('기존 검사 결과 확인 중…')
           const checkUrl = `${API_BASE}/check-exists?matnr=${encodeURIComponent(matnrValue)}&lotnr=${encodeURIComponent(lotnrValue)}&indBcd=${encodeURIComponent(indBcdValue)}`
           const checkRes = await axios.get(checkUrl)
-          if (checkRes.data.exists) {
+          const checkData = unwrapApiResponse(checkRes.data)
+          if (checkData.exists) {
             setProcessingOverlay(false)
-            const existingRecord = checkRes.data.record || {}
+            const existingRecord = checkData.record || {}
             const currentSeq = existingRecord.indBcdSeq || '1'
             const nextSeq = Number(currentSeq) + 1
             const confirmed = window.confirm(
@@ -994,7 +1007,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (resultBlob) fd.append('resultImage', resultBlob, 'result.jpg')
 
       const res = await axios.post(API_BASE, fd)
-      const saved = res.data
+      const saved = unwrapApiResponse(res.data)
       const elapsed = ((performance.now() - saveStart) / 1000).toFixed(1)
       const autoTitle = indBcdValue
         ? `${indBcdValue} - ${formatDateTime(inspectedAtValue.toISOString())}`
@@ -1008,7 +1021,8 @@ document.addEventListener('DOMContentLoaded', () => {
       await sendResultToMes(saved, m, isUpdate)
     } catch (error) {
       console.error(error)
-      setSaveMessage('저장 중 오류가 발생했습니다: ' + (error.response?.data?.error || error.message), 'error')
+      const errData = error.response?.data ? unwrapApiResponse(error.response.data) : null
+      setSaveMessage('저장 중 오류가 발생했습니다: ' + (errData?.error || error.response?.data?.message || error.message), 'error')
     } finally {
       setProcessingOverlay(false)
     }
@@ -1046,7 +1060,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       console.log('[MES] 전송 payload:', mesPayload)
       const mesRes = await axios.post(MES_API_BASE, mesPayload)
-      const mesResult = mesRes.data
+      const mesResult = unwrapApiResponse(mesRes.data)
 
       if (mesResult.success) {
         const actionLabel = isUpdate ? '갱신' : '저장'
@@ -1065,7 +1079,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (mesError) {
       console.error('[MES] 전송 오류:', mesError)
       setSaveMessage(
-        `DB 저장 완료 · MES 전송 오류: ${mesError.response?.data?.message || mesError.message}`,
+        `DB 저장 완료 · MES 전송 오류: ${mesError.response?.data?.message || unwrapApiResponse(mesError.response?.data || {})?.message || mesError.message}`,
         'error'
       )
     } finally {
@@ -1115,7 +1129,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const res = await axios.get(url)
-      const data = res.data
+      const data = unwrapApiResponse(res.data)
       const entries = data.content || []
       const totalPages = data.totalPages || 0
       renderHistoryCards(entries)
@@ -1396,7 +1410,7 @@ document.addEventListener('DOMContentLoaded', () => {
         url = `${API_BASE}?${params.toString()}`
       }
       const res = await axios.get(url)
-      const allEntries = res.data.content || []
+      const allEntries = unwrapApiResponse(res.data).content || []
 
       if (!allEntries.length) {
         setSaveMessage('내보낼 데이터가 없습니다.', 'error')

@@ -59,8 +59,30 @@ const MIME = {
 };
 
 // ──────── Helpers ────────
-function sendJSON(res, status, data) {
-  const body = JSON.stringify(data);
+
+/**
+ * ApiResponse 래핑 헬퍼 (Spring Boot core ApiResponse 형식 동일)
+ * { success: boolean, data: T, message: string|null, timestamp: string }
+ */
+function wrapApiResponse(data, success = true, message = null) {
+  return {
+    success,
+    data,
+    message,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+/**
+ * JSON 응답 전송 (API 라우트에서는 ApiResponse 래핑 적용)
+ * @param {object} res - HTTP Response
+ * @param {number} status - HTTP status code
+ * @param {object} data - 응답 데이터
+ * @param {boolean} wrap - ApiResponse 래핑 여부 (default: true)
+ */
+function sendJSON(res, status, data, wrap = true) {
+  const payload = wrap ? wrapApiResponse(data, status < 400, status >= 400 ? (data.error || data.message || null) : null) : data;
+  const body = JSON.stringify(payload);
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',

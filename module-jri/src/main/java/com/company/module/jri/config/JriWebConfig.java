@@ -3,8 +3,10 @@ package com.company.module.jri.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -13,8 +15,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * 점보롤 지분 검사 모듈 Web MVC 설정
  *
  * <p>/jri-api/** 경로에 대한 CORS 설정
- * <p>정적 리소스 핸들링
- * <p>Jackson ObjectMapper 빈 (jriObjectMapper 이름으로 등록, 충돌 방지)
+ * <p>이미지 업로드 경로 리소스 핸들링 (/uploads/**)
+ * <p>Jackson ObjectMapper 빈 (jriObjectMapper)
  *
  * <p>Core 모듈의 WebMvcConfigurer와 충돌하지 않도록 독립적으로 구성합니다.
  * <p>Spring은 여러 WebMvcConfigurer를 자동 merge하므로 안전합니다.
@@ -22,43 +24,34 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class JriWebConfig implements WebMvcConfigurer {
 
+    @Value("${jri.upload.dir:/data/upload/ps_cov_ins}")
+    private String uploadDir;
+
     /**
      * /jri-api/** 경로에 대한 CORS 허용
      */
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/jri-api/**")
-                .allowedOriginPatterns("*")
+                .allowedOrigins("*")
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
                 .allowedHeaders("*")
-                .allowCredentials(true)
                 .maxAge(3600);
     }
 
     /**
-     * 정적 리소스 핸들링
-     * /jri-static/** → classpath:/static/jri/
+     * 이미지 업로드 경로 리소스 핸들링
+     * URL: /uploads/** → file:{uploadDir}/
      */
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        registry.addResourceHandler("/jri-static/**")
-                .addResourceLocations("classpath:/static/jri/")
-                .setCachePeriod(3600);
-
-        // 업로드된 검사 이미지 정적 서빙
-        // URL: /uploads/original/2026.04/xxx.jpg  →  file:/data/upload/ps_cov_ins/original/2026.04/xxx.jpg
-        // URL: /uploads/result/2026.04/xxx.jpg    →  file:/data/upload/ps_cov_ins/result/2026.04/xxx.jpg
+        String location = uploadDir.endsWith("/") ? uploadDir : uploadDir + "/";
         registry.addResourceHandler("/uploads/**")
-                .addResourceLocations("file:/data/upload/ps_cov_ins/")
-                .setCachePeriod(3600);
+                .addResourceLocations("file:" + location);
     }
 
     /**
-     * JRI 모듈 전용 ObjectMapper.
-     *
-     * <p>Core의 기본 ObjectMapper("objectMapper" 빈)와 충돌하지 않도록
-     * Primary 지정 없이 별도 빈 이름으로 등록합니다.
-     * <p>필요 시 @Qualifier("jriObjectMapper")로 주입하세요.
+     * JRI 모듈 전용 ObjectMapper (jriObjectMapper 이름으로 등록하여 core와 충돌 방지)
      */
     @Bean("jriObjectMapper")
     public ObjectMapper jriObjectMapper() {
@@ -66,5 +59,14 @@ public class JriWebConfig implements WebMvcConfigurer {
         mapper.registerModule(new JavaTimeModule());
         mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         return mapper;
+    }
+
+    /**
+     * RestTemplate 빈 (MES 연동용)
+     * core에 이미 등록된 경우 @ConditionalOnMissingBean으로 대체 가능
+     */
+    @Bean
+    public RestTemplate jriRestTemplate() {
+        return new RestTemplate();
     }
 }

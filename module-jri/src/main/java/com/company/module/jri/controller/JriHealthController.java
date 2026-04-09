@@ -1,5 +1,6 @@
 package com.company.module.jri.controller;
 
+import com.company.core.common.response.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,13 +21,13 @@ import java.util.Map;
 public class JriHealthController {
 
     @GetMapping
-    public ResponseEntity<Map<String, Object>> healthCheck() {
-        return ResponseEntity.ok(Map.of(
+    public ResponseEntity<ApiResponse<Map<String, Object>>> healthCheck() {
+        return ResponseEntity.ok(ApiResponse.success(Map.of(
                 "status", "ok",
                 "module", "module-jri",
                 "application", "JumboRollShareInspector",
                 "version", "5.0.0",
                 "timestamp", LocalDateTime.now().toString()
-        ));
+        )));
     }
 }
