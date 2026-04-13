@@ -346,6 +346,7 @@ async function handleSave(req, res) {
 
     // 차수(indBcdSeq) 증가: 동일 자재+LOT+바코드 재검사 시 +1
     existing.indBcdSeq = String(Number(existing.indBcdSeq || '1') + 1);
+    existing.updatedAt = new Date().toISOString();
 
     // UPDATE 후 배열에서 최신 위치(앞)로 이동 (FIFO 정리 시 삭제 방지)
     const existingIdx = inspections.indexOf(existing);
@@ -412,6 +413,8 @@ async function handleSave(req, res) {
       operatorNm: body.operatorNm || null,
       deviceId: body.deviceId || null,
       status: body.status || null,
+      createdAt: new Date().toISOString(),
+      updatedAt: null,
     };
 
     inspections.unshift(record); // newest first
