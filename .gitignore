@@ -24,3 +24,5 @@ logs/
 
 # Node
 preview/uploads/
+jri_inspection_schema.xlsx
+*.xlsx

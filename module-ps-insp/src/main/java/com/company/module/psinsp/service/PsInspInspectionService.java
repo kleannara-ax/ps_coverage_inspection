@@ -1,9 +1,9 @@
-package com.company.module.jri.service;
+package com.company.module.psinsp.service;
 
-import com.company.module.jri.dto.JriInspectionResponse;
-import com.company.module.jri.dto.JriInspectionSaveRequest;
-import com.company.module.jri.entity.JriInspection;
-import com.company.module.jri.repository.JriInspectionRepository;
+import com.company.module.psinsp.dto.PsInspInspectionResponse;
+import com.company.module.psinsp.dto.PsInspInspectionSaveRequest;
+import com.company.module.psinsp.entity.PsInspInspection;
+import com.company.module.psinsp.repository.PsInspInspectionRepository;
 import com.company.core.common.exception.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +26,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
 /**
- * 점보롤 지분 검사 비즈니스 로직 서비스
+ * PS 커버리지 검사 비즈니스 로직 서비스
  *
  * <p>@Transactional(readOnly = true) 기본, 쓰기 메서드만 @Transactional
  */
@@ -34,26 +34,26 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class JriInspectionService {
+public class PsInspInspectionService {
 
-    private final JriInspectionRepository inspectionRepository;
+    private final PsInspInspectionRepository inspectionRepository;
 
-    @Value("${jri.upload.dir:/data/upload/ps_cov_ins}")
+    @Value("${ps-insp.upload.dir:/data/upload/ps_cov_ins}")
     private String uploadDir;
 
     // ──────────── 저장 (Upsert) ────────────
 
     @Transactional
-    public JriInspectionResponse saveInspection(JriInspectionSaveRequest request,
-                                                 MultipartFile originalImage,
-                                                 MultipartFile resultImage) {
-        log.info("[JRI] 검사 결과 저장 요청 - indBcd: {}, lotnr: {}, matnr: {}",
+    public PsInspInspectionResponse saveInspection(PsInspInspectionSaveRequest request,
+                                                    MultipartFile originalImage,
+                                                    MultipartFile resultImage) {
+        log.info("[PS-INSP] 검사 결과 저장 요청 - indBcd: {}, lotnr: {}, matnr: {}",
                 request.getIndBcd(), request.getLotnr(), request.getMatnr());
 
         String matnrSafe = safeName(request.getMatnr());
         String indBcdSafe = safeName(request.getIndBcd());
         boolean isUpdate = false;
-        JriInspection inspection = null;
+        PsInspInspection inspection = null;
 
         // Upsert: 동일 자재+LOT+바코드 조합 조회
         if (hasText(request.getMatnr()) && hasText(request.getLotnr()) && hasText(request.getIndBcd())) {
@@ -65,7 +65,7 @@ public class JriInspectionService {
         if (inspection != null) {
             // ── UPDATE ──
             isUpdate = true;
-            log.info("[JRI] 기존 레코드 발견 → UPDATE (id: {})", inspection.getInspectionId());
+            log.info("[PS-INSP] 기존 레코드 발견 -> UPDATE (id: {})", inspection.getInspectionId());
 
             String origPath = saveUploadedImage(originalImage, "original", inspection.getInspectionId(), matnrSafe, indBcdSafe);
             String resPath = saveUploadedImage(resultImage, "result", inspection.getInspectionId(), matnrSafe, indBcdSafe);
@@ -109,8 +109,7 @@ public class JriInspectionService {
                 indBcdSeq = String.valueOf(count + 1);
             }
 
-            // 임시 ID 없이 빌드 (save 후 ID 생성)
-            inspection = JriInspection.builder()
+            inspection = PsInspInspection.builder()
                     .seq(seq)
                     .inspItemGrpCd(request.getInspItemGrpCd())
                     .matnr(request.getMatnr())
@@ -172,78 +171,27 @@ public class JriInspectionService {
 
         inspection = inspectionRepository.save(inspection);
 
-        log.info("[JRI] 검사 결과 {} - id: {}, seq: {}, indBcd: {}",
+        log.info("[PS-INSP] 검사 결과 {} - id: {}, seq: {}, indBcd: {}",
                 isUpdate ? "갱신(UPDATE)" : "신규(INSERT)",
                 inspection.getInspectionId(), inspection.getSeq(), inspection.getIndBcd());
 
-        JriInspectionResponse response = JriInspectionResponse.from(inspection);
-        return JriInspectionResponse.builder()
-                .inspectionId(response.getInspectionId())
-                .seq(response.getSeq())
-                .inspItemGrpCd(response.getInspItemGrpCd())
-                .matnr(response.getMatnr())
-                .matnrNm(response.getMatnrNm())
-                .werks(response.getWerks())
-                .msrmDate(response.getMsrmDate())
-                .prcSeqno(response.getPrcSeqno())
-                .lotnr(response.getLotnr())
-                .indBcd(response.getIndBcd())
-                .indBcdSeq(response.getIndBcdSeq())
-                .inspectedAt(response.getInspectedAt())
-                .thresholdMax(response.getThresholdMax())
-                .totalCount(response.getTotalCount())
-                .coverageRatio(response.getCoverageRatio())
-                .densityCount(response.getDensityCount())
-                .densityRatio(response.getDensityRatio())
-                .sizeUniformityScore(response.getSizeUniformityScore())
-                .distributionUniformityScore(response.getDistributionUniformityScore())
-                .meanSize(response.getMeanSize())
-                .stdSize(response.getStdSize())
-                .autoCount(response.getAutoCount())
-                .manualCount(response.getManualCount())
-                .removedAutoCount(response.getRemovedAutoCount())
-                .bucketUpTo3(response.getBucketUpTo3())
-                .bucketUpTo5(response.getBucketUpTo5())
-                .bucketUpTo7(response.getBucketUpTo7())
-                .bucketOver7(response.getBucketOver7())
-                .quadrantTopLeft(response.getQuadrantTopLeft())
-                .quadrantTopRight(response.getQuadrantTopRight())
-                .quadrantBottomLeft(response.getQuadrantBottomLeft())
-                .quadrantBottomRight(response.getQuadrantBottomRight())
-                .objectPixelCount(response.getObjectPixelCount())
-                .totalPixels(response.getTotalPixels())
-                .manualAddedCount(response.getManualAddedCount())
-                .manualRemovedCount(response.getManualRemovedCount())
-                .originalImagePath(response.getOriginalImagePath())
-                .originalImageName(response.getOriginalImageName())
-                .originalImageDir(response.getOriginalImageDir())
-                .resultImagePath(response.getResultImagePath())
-                .resultImageName(response.getResultImageName())
-                .resultImageDir(response.getResultImageDir())
-                .operatorId(response.getOperatorId())
-                .operatorNm(response.getOperatorNm())
-                .deviceId(response.getDeviceId())
-                .status(response.getStatus())
-                .createdAt(response.getCreatedAt())
-                .updatedAt(response.getUpdatedAt())
-                .isUpdate(isUpdate)
-                .build();
+        return PsInspInspectionResponse.from(inspection, isUpdate);
     }
 
     // ──────────── 조회 ────────────
 
-    public JriInspectionResponse getInspection(Long id) {
-        JriInspection inspection = inspectionRepository.findById(id)
+    public PsInspInspectionResponse getInspection(Long id) {
+        PsInspInspection inspection = inspectionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("검사 결과를 찾을 수 없습니다. ID: " + id));
-        return JriInspectionResponse.from(inspection);
+        return PsInspInspectionResponse.from(inspection);
     }
 
-    public Page<JriInspectionResponse> listInspections(Pageable pageable) {
+    public Page<PsInspInspectionResponse> listInspections(Pageable pageable) {
         return inspectionRepository.findAllByOrderByInspectedAtDesc(pageable)
-                .map(JriInspectionResponse::from);
+                .map(PsInspInspectionResponse::from);
     }
 
-    public Page<JriInspectionResponse> searchInspections(String indBcd, String dateFrom, String dateTo, Pageable pageable) {
+    public Page<PsInspInspectionResponse> searchInspections(String indBcd, String dateFrom, String dateTo, Pageable pageable) {
         boolean hasIndBcd = hasText(indBcd);
         boolean hasDateFrom = hasText(dateFrom);
         boolean hasDateTo = hasText(dateTo);
@@ -257,23 +205,23 @@ public class JriInspectionService {
 
         if (hasIndBcd) {
             return inspectionRepository.searchByIndBcdAndDateRange(indBcd, from, to, pageable)
-                    .map(JriInspectionResponse::from);
+                    .map(PsInspInspectionResponse::from);
         } else {
             return inspectionRepository.findByDateRange(from, to, pageable)
-                    .map(JriInspectionResponse::from);
+                    .map(PsInspInspectionResponse::from);
         }
     }
 
-    public Page<JriInspectionResponse> searchByIndBcd(String keyword, Pageable pageable) {
-        return inspectionRepository.searchByIndBcd(keyword, pageable).map(JriInspectionResponse::from);
+    public Page<PsInspInspectionResponse> searchByIndBcd(String keyword, Pageable pageable) {
+        return inspectionRepository.searchByIndBcd(keyword, pageable).map(PsInspInspectionResponse::from);
     }
 
-    public Page<JriInspectionResponse> searchByLotnr(String keyword, Pageable pageable) {
-        return inspectionRepository.searchByLotnr(keyword, pageable).map(JriInspectionResponse::from);
+    public Page<PsInspInspectionResponse> searchByLotnr(String keyword, Pageable pageable) {
+        return inspectionRepository.searchByLotnr(keyword, pageable).map(PsInspInspectionResponse::from);
     }
 
-    public Page<JriInspectionResponse> searchByMatnr(String keyword, Pageable pageable) {
-        return inspectionRepository.searchByMatnr(keyword, pageable).map(JriInspectionResponse::from);
+    public Page<PsInspInspectionResponse> searchByMatnr(String keyword, Pageable pageable) {
+        return inspectionRepository.searchByMatnr(keyword, pageable).map(PsInspInspectionResponse::from);
     }
 
     public Map<String, Object> checkExists(String matnr, String lotnr, String indBcd) {
@@ -300,13 +248,13 @@ public class JriInspectionService {
             throw new EntityNotFoundException("검사 결과를 찾을 수 없습니다. ID: " + id);
         }
         inspectionRepository.deleteById(id);
-        log.info("[JRI] 검사 결과 삭제 - id: {}", id);
+        log.info("[PS-INSP] 검사 결과 삭제 - id: {}", id);
     }
 
     @Transactional
     public void deleteAllInspections() {
         inspectionRepository.deleteAll();
-        log.info("[JRI] 전체 검사 결과 삭제");
+        log.info("[PS-INSP] 전체 검사 결과 삭제");
     }
 
     // ──────────── 이미지 저장 ────────────
@@ -317,7 +265,7 @@ public class JriInspectionService {
         try {
             if (!Files.exists(dir)) Files.createDirectories(dir);
         } catch (IOException e) {
-            log.error("[JRI] 이미지 디렉토리 생성 실패 - dir: {}", dir, e);
+            log.error("[PS-INSP] 이미지 디렉토리 생성 실패 - dir: {}", dir, e);
         }
         return dir;
     }
@@ -345,7 +293,7 @@ public class JriInspectionService {
             String yearMonth = YearMonth.now().format(DateTimeFormatter.ofPattern("yyyy.MM"));
             return String.format("/uploads/%s/%s/%s", category, yearMonth, filename);
         } catch (IOException e) {
-            log.error("[JRI] 이미지 저장 실패 - prefix: {}", prefix, e);
+            log.error("[PS-INSP] 이미지 저장 실패 - prefix: {}", prefix, e);
             return null;
         }
     }

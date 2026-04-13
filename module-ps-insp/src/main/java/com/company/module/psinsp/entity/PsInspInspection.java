@@ -1,4 +1,4 @@
-package com.company.module.jri.entity;
+package com.company.module.psinsp.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -7,19 +7,19 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * 점보롤 지분 검사 결과 엔티티
+ * PS 커버리지 검사 결과 엔티티 (점보롤 지분 검사)
  *
- * <p>Table: jri_inspection (소문자 snake_case)
+ * <p>Table: ps_insp_inspection (소문자 snake_case)
  * <p>Column: UPPER_SNAKE_CASE
  * <p>PK: INSPECTION_ID (BIGINT, AUTO_INCREMENT)
  */
 @Entity
-@Table(name = "jri_inspection")
+@Table(name = "ps_insp_inspection")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Builder
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
-public class JriInspection {
+public class PsInspInspection {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -184,7 +184,7 @@ public class JriInspection {
     }
 
     /**
-     * 재검사 시 검사 데이터 업데이트 (setter 사용 금지 — 비즈니스 메서드로 갱신)
+     * 재검사 시 검사 데이터 업데이트 (setter 사용 금지 - 비즈니스 메서드로 갱신)
      */
     public void updateInspectionData(
             LocalDateTime inspectedAt, LocalDateTime msrmDate,
@@ -233,7 +233,7 @@ public class JriInspection {
     }
 
     /**
-     * 이미지 경로 업데이트
+     * 원본 이미지 경로 업데이트
      */
     public void updateOriginalImage(String path, String name, String dir) {
         if (path != null) {
@@ -243,6 +243,9 @@ public class JriInspection {
         }
     }
 
+    /**
+     * 결과 이미지 경로 업데이트
+     */
     public void updateResultImage(String path, String name, String dir) {
         if (path != null) {
             this.resultImagePath = path;
@@ -259,7 +262,7 @@ public class JriInspection {
     }
 
     /**
-     * 차수(indBcdSeq) 증가
+     * 차수(indBcdSeq) 증가 - 재검사 시 호출
      */
     public void incrementIndBcdSeq() {
         int current = 1;

@@ -1,13 +1,13 @@
 -- ============================================================
--- module-jri: PS 커버리지 검사 (점보롤 지분 검사) DDL
+-- module-ps-insp: PS 커버리지 검사 (점보롤 지분 검사) DDL
 -- Database: MariaDB 10.11+ (utf8mb4)
 -- Naming: table = lower_snake_case, column = UPPER_SNAKE_CASE
 -- ============================================================
 
 -- 기존 테이블 존재 시 DROP (최초 설치만 해당, 운영 환경에서는 주석 처리)
--- DROP TABLE IF EXISTS jri_inspection;
+-- DROP TABLE IF EXISTS ps_insp_inspection;
 
-CREATE TABLE IF NOT EXISTS jri_inspection (
+CREATE TABLE IF NOT EXISTS ps_insp_inspection (
     INSPECTION_ID   BIGINT          NOT NULL AUTO_INCREMENT  COMMENT '검사 결과 PK (자동 증가)',
     SEQ             INT             NOT NULL DEFAULT 0       COMMENT '글로벌 시퀀스 번호 (INSERT 시 증가)',
     INSP_ITEM_GRP_CD VARCHAR(100)   NULL                     COMMENT '검사항목그룹코드',
@@ -55,20 +55,21 @@ CREATE TABLE IF NOT EXISTS jri_inspection (
     DEVICE_ID       VARCHAR(200)    NULL                     COMMENT '장비 ID',
     STATUS          VARCHAR(100)    NULL                     COMMENT '검사 상태',
     CREATED_AT      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
+    UPDATED_AT      DATETIME        NULL                     COMMENT '수정일시 (재검사 UPDATE 시 자동 갱신)',
 
     PRIMARY KEY (INSPECTION_ID),
-    CONSTRAINT UK_JRI_MATNR_LOTNR_INDBCD UNIQUE (MATNR, LOTNR, IND_BCD)
+    CONSTRAINT UK_PS_INSP_MATNR_LOTNR_INDBCD UNIQUE (MATNR, LOTNR, IND_BCD)
 ) ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4
-  COLLATE=utf8mb4_unicode_ci
-  COMMENT='[module-jri] 점보롤 지분 검사 결과';
+  COLLATE=utf8mb4_general_ci
+  COMMENT='[module-ps-insp] PS 커버리지 검사 결과 (점보롤 지분 검사)';
 
 -- ── 인덱스 ──
-CREATE INDEX IDX_JRI_IND_BCD       ON jri_inspection (IND_BCD);
-CREATE INDEX IDX_JRI_LOTNR         ON jri_inspection (LOTNR);
-CREATE INDEX IDX_JRI_MATNR         ON jri_inspection (MATNR);
-CREATE INDEX IDX_JRI_WERKS         ON jri_inspection (WERKS);
-CREATE INDEX IDX_JRI_MSRM_DATE     ON jri_inspection (MSRM_DATE DESC);
-CREATE INDEX IDX_JRI_INSPECTED_AT  ON jri_inspection (INSPECTED_AT DESC);
-CREATE INDEX IDX_JRI_OPERATOR_ID   ON jri_inspection (OPERATOR_ID);
-CREATE INDEX IDX_JRI_STATUS        ON jri_inspection (STATUS);
+CREATE INDEX IDX_PS_INSP_IND_BCD       ON ps_insp_inspection (IND_BCD);
+CREATE INDEX IDX_PS_INSP_LOTNR         ON ps_insp_inspection (LOTNR);
+CREATE INDEX IDX_PS_INSP_MATNR         ON ps_insp_inspection (MATNR);
+CREATE INDEX IDX_PS_INSP_WERKS         ON ps_insp_inspection (WERKS);
+CREATE INDEX IDX_PS_INSP_MSRM_DATE     ON ps_insp_inspection (MSRM_DATE DESC);
+CREATE INDEX IDX_PS_INSP_INSPECTED_AT  ON ps_insp_inspection (INSPECTED_AT DESC);
+CREATE INDEX IDX_PS_INSP_OPERATOR_ID   ON ps_insp_inspection (OPERATOR_ID);
+CREATE INDEX IDX_PS_INSP_STATUS        ON ps_insp_inspection (STATUS);

@@ -1,18 +1,18 @@
-package com.company.module.jri.dto;
+package com.company.module.psinsp.dto;
 
-import com.company.module.jri.entity.JriInspection;
+import com.company.module.psinsp.entity.PsInspInspection;
 import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * 점보롤 지분 검사 결과 응답 DTO
+ * PS 커버리지 검사 결과 응답 DTO
  */
 @Getter
 @Builder
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
-public class JriInspectionResponse {
+public class PsInspInspectionResponse {
 
     private Long inspectionId;
     private Integer seq;
@@ -67,10 +67,17 @@ public class JriInspectionResponse {
     private Boolean isUpdate;
 
     /**
-     * Entity → Response DTO 변환 (static 팩토리 메서드)
+     * Entity -> Response DTO 변환 (static 팩토리 메서드)
      */
-    public static JriInspectionResponse from(JriInspection entity) {
-        return JriInspectionResponse.builder()
+    public static PsInspInspectionResponse from(PsInspInspection entity) {
+        return from(entity, null);
+    }
+
+    /**
+     * Entity -> Response DTO 변환 (isUpdate 포함)
+     */
+    public static PsInspInspectionResponse from(PsInspInspection entity, Boolean isUpdate) {
+        return PsInspInspectionResponse.builder()
                 .inspectionId(entity.getInspectionId())
                 .seq(entity.getSeq())
                 .inspItemGrpCd(entity.getInspItemGrpCd())
@@ -119,6 +126,7 @@ public class JriInspectionResponse {
                 .status(entity.getStatus())
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
+                .isUpdate(isUpdate)
                 .build();
     }
 }
